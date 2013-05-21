@@ -22,14 +22,25 @@
 		android:theme="@style/AppTheme" >
 		<activity
 			android:name="com.ziseezhou.voicerepeater.VoiceRepeater"
+			android:launchMode="singleTask"
+            android:clearTaskOnLaunch="true"
 			android:label="@string/app_name" >
 			<intent-filter>
 				<action android:name="android.intent.action.MAIN" />
-
 				<category android:name="android.intent.category.LAUNCHER" />
 			</intent-filter>
+			<intent-filter>
+                <action android:name="com.ziseezhou.voicerepeater.MAIN" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
 		</activity>
 		<service android:name=".VoiceRepeaterService" android:exported="false" />
+		<receiver android:name=".MediaButtonIntentReceiver">
+            <intent-filter>
+                <action android:name="android.intent.action.MEDIA_BUTTON" />
+                <action android:name="android.media.AUDIO_BECOMING_NOISY" />
+            </intent-filter>
+        </receiver>
 	</application>
 
 </manifest>

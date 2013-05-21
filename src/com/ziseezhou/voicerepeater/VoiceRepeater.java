@@ -257,6 +257,12 @@ public class VoiceRepeater extends ListActivity {
         Log.v(TAG, ">>> onStart");
         
         mRefreshShouldPause = false;
+        
+        if (bindService(new Intent(this, VoiceRepeaterService.class),
+                mConnection, Context.BIND_AUTO_CREATE)) {
+            mBindLaunched = true;
+            Log.v(TAG, ">>> onStart bind launched successful");
+        }
 
         IntentFilter f = new IntentFilter();
         f.addAction(VoiceRepeaterService.PLAYSTATE_CHANGED);
@@ -265,14 +271,6 @@ public class VoiceRepeater extends ListActivity {
         f.addAction(VoiceRepeaterService.EXIT);
         registerReceiver(mStatusListener, new IntentFilter(f));
         updateTrackInfo();
-        //long next = refreshNow();
-        //queueNextRefresh(next);
-        
-        if (bindService(new Intent(this, VoiceRepeaterService.class),
-                mConnection, Context.BIND_AUTO_CREATE)) {
-            mBindLaunched = true;
-            Log.v(TAG, ">>> onStart bind launched successful");
-        }
     }
     
     private BroadcastReceiver mStatusListener = new BroadcastReceiver() {
@@ -295,7 +293,7 @@ public class VoiceRepeater extends ListActivity {
     
     @Override
     public void onStop() {
-        mRefreshShouldPause = false;
+        mRefreshShouldPause = true;
         mHandler.removeMessages(REFRESH);
         unregisterReceiver(mStatusListener);
         mService = null;
@@ -489,7 +487,7 @@ public class VoiceRepeater extends ListActivity {
             
             VoiceRepeater.this.onServiceConnected(name, service);
             
-            //mService.registerCallback(mCallback);
+            updateTrackInfo();
             postUpdateUI();
             
         }
@@ -726,6 +724,8 @@ public class VoiceRepeater extends ListActivity {
                 hasAudioInService = (mService.getAudioId() != -1);
             } catch (Exception e) { e.printStackTrace(); }
         }
+		
+		Log.v(TAG, ">>> updateUI: serivce="+mService+", isPlaying="+isPlaying);
         
         if (isPlaying){
             queueNextRefresh(1);
@@ -764,6 +764,7 @@ public class VoiceRepeater extends ListActivity {
             boolean isToolsVisible = View.VISIBLE == findViewById(R.id.tools).getVisibility();
             if (isToolsVisible) {
                 mCollapser.setImageResource(R.drawable.tools_hide);
+                ((TextView)findViewById(R.id.trackInfo)).setSelected(true);
             } else {
                 mCollapser.setImageResource(R.drawable.tools_show);
             }
@@ -790,6 +791,7 @@ public class VoiceRepeater extends ListActivity {
         try {
             long pos = mPosOverride < 0 ? mService.position() : mPosOverride;
             long remaining = 1000 - (pos % 1000);
+            Log.v(TAG, ">>> pos="+pos+", mDuration="+mDuration);
             if ((pos >= 0) && (mDuration > 0)) {
                 mCurrentTime.setText(Utils.makeTimeString(this, pos / 1000));
                 
@@ -798,7 +800,7 @@ public class VoiceRepeater extends ListActivity {
                 } else {
                     // blink the counter
                     int vis = mCurrentTime.getVisibility();
-                    mCurrentTime.setVisibility(vis == View.INVISIBLE ? View.VISIBLE : View.INVISIBLE);
+                    //mCurrentTime.setVisibility(vis == View.INVISIBLE ? View.VISIBLE : View.INVISIBLE);
                     remaining = 500;
                 }
 
@@ -816,14 +818,17 @@ public class VoiceRepeater extends ListActivity {
     }
     
     private void updateTrackInfo() {
+        Log.e(TAG, ">>> updateTrackInfo(): mService="+mService);
         if (mService == null) {
             return;
         }
+        
         try {
-            String path = mService.getPath();
+            String path = mService.getTrackFilePath();
             if (path == null) {
-                finish();
-                return;
+                path = "";
+                //finish();
+                //return;
             }
             
 //            long songid = mService.getAudioId(); 
@@ -846,7 +851,10 @@ public class VoiceRepeater extends ListActivity {
 //            mAlbumArtHandler.obtainMessage(GET_ALBUM_ART, new AlbumSongIdWrapper(albumid, songid)).sendToTarget();
 //            mAlbum.setVisibility(View.VISIBLE);
             
+            ((TextView)findViewById(R.id.trackInfo)).setText(path);
+            
             mDuration = mService.duration();
+            Log.e(TAG, ">>> updateTrackInfo(): duration="+mDuration);
             mTotalTime.setText(Utils.makeTimeString(this, mDuration / 1000));
         } catch (RemoteException ex) {
             finish();
@@ -927,7 +935,7 @@ public class VoiceRepeater extends ListActivity {
             if (!TextUtils.isEmpty(filter)) {
                 uri = uri.buildUpon().appendQueryParameter("filter", Uri.encode(filter)).build();
             }
-            Log.v(TAG, ">>> where="+where);
+            //Log.v(TAG, ">>> where="+where);
             ret = queryhandler.doQuery(uri,
                     mCursorCols, where.toString() , null, mSortOrder, async);
         }

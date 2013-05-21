@@ -138,7 +138,7 @@
         	android:id="@+id/tools"
         	android:visibility="gone"
 	        android:layout_width="match_parent"
-	        android:layout_height="100dp"
+	        android:layout_height="wrap_content"
 	        android:background="#EEEEEE"
 	        android:orientation="vertical" >
 	        <LinearLayout
@@ -222,6 +222,17 @@
                     android:background="@drawable/button"
                     android:src="@drawable/media_repeater_idle" />
             </LinearLayout>
+             <TextView
+                    android1:id="@+id/trackInfo"
+                    android:gravity="right"
+                    android1:textAppearance="?android:attr/textAppearanceSmall" 
+                    android:layout_width="fill_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="marquee"
+                    android:singleLine="true"
+                    android:marqueeRepeatLimit="marquee_forever"
+                    android:focusable="true" 
+                    android:focusableInTouchMode="true" />
 	    </LinearLayout>
     </LinearLayout>
 </RelativeLayout>

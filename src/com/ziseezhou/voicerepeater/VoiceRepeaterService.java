@@ -356,8 +356,8 @@ public class VoiceRepeaterService extends Service {
 		
 		// headset plugin
 		mAudioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
-        //ComponentName rec = new ComponentName(getPackageName(), MediaButtonIntentReceiver.class.getName());
-        //mAudioManager.registerMediaButtonEventReceiver(rec);
+        ComponentName rec = new ComponentName(getPackageName(), MediaButtonIntentReceiver.class.getName());
+        mAudioManager.registerMediaButtonEventReceiver(rec);
 		
 		mPreferences = getSharedPreferences("Music", MODE_WORLD_READABLE | MODE_WORLD_WRITEABLE);
         mCardId = Utils.getCardId(this);
@@ -1037,8 +1037,8 @@ public class VoiceRepeaterService extends Service {
     public void play() {
         mAudioManager.requestAudioFocus(mAudioFocusListener, AudioManager.STREAM_MUSIC,
                 AudioManager.AUDIOFOCUS_GAIN);
-        //mAudioManager.registerMediaButtonEventReceiver(new ComponentName(this.getPackageName(),
-        //        MediaButtonIntentReceiver.class.getName()));
+        mAudioManager.registerMediaButtonEventReceiver(new ComponentName(this.getPackageName(),
+                MediaButtonIntentReceiver.class.getName()));
 
         if (mPlayer.isInitialized()) {
             // if we are at the end of the song, go to the next song first
@@ -1111,8 +1111,14 @@ public class VoiceRepeaterService extends Service {
         mStatus.flags |= Notification.FLAG_ONGOING_EVENT;
         mStatus.icon = R.drawable.ic_launcher;
         mStatus.contentIntent = PendingIntent.getActivity(this, 0,
-                new Intent(VoiceRepeater.class.toString()), 0);
+                new Intent("com.ziseezhou.voicerepeater.MAIN")
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK), 0);
         startForeground(PLAYBACKSERVICE_STATUS, mStatus);
+        
+        //mStatus.contentIntent = PendingIntent.getActivity(this, 0,
+        //        new Intent("com.ziseezhou.voicerepeater.ONTIM_PLAYBACK_VIEWER")
+        //        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK), 0);
+        //startForeground(PLAYBACKSERVICE_STATUS, mStatus);
         
         
     }
@@ -1444,6 +1450,15 @@ public class VoiceRepeaterService extends Service {
         }
     }
     
+    public String getTrackFilePath() {
+        synchronized (this) {
+            if (mCursor == null) {
+                return null;
+            }
+            return mCursor.getString(mCursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DATA));
+        }
+    }
+    
     /**
      * Returns the duration of the file in milliseconds.
      * Currently this method returns -1 for the duration of MIDI files.
@@ -1682,6 +1697,9 @@ public class VoiceRepeaterService extends Service {
         }
         public String getTrackName() {
             return mService.get().getTrackName();
+        }
+        public String getTrackFilePath() {
+            return mService.get().getTrackFilePath();
         }
         public void enqueue(long [] list , int action) {
             mService.get().enqueue(list, action);

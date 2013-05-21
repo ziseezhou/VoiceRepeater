@@ -32,6 +32,7 @@ interface IVoiceRepeaterService {
     long position();
     long seek(long pos);
     String getTrackName();
+    String getTrackFilePath();
     long [] getQueue();
     String getPath();
     long getAudioId();
