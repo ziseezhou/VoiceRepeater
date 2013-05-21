@@ -356,8 +356,8 @@ public class VoiceRepeaterService extends Service {
 		
 		// headset plugin
 		mAudioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
-        ComponentName rec = new ComponentName(getPackageName(), MediaButtonIntentReceiver.class.getName());
-        mAudioManager.registerMediaButtonEventReceiver(rec);
+        //ComponentName rec = new ComponentName(getPackageName(), MediaButtonIntentReceiver.class.getName());
+        //mAudioManager.registerMediaButtonEventReceiver(rec);
 		
 		mPreferences = getSharedPreferences("Music", MODE_WORLD_READABLE | MODE_WORLD_WRITEABLE);
         mCardId = Utils.getCardId(this);
@@ -368,7 +368,7 @@ public class VoiceRepeaterService extends Service {
         mPlayer = new MultiPlayer();
         mPlayer.setHandler(mMediaplayerHandler);
         
-        reloadQueue();
+        //reloadQueue();
         notifyChange(QUEUE_CHANGED);
         notifyChange(META_CHANGED);
         
@@ -408,6 +408,8 @@ public class VoiceRepeaterService extends Service {
         }
 
         mAudioManager.abandonAudioFocus(mAudioFocusListener);
+        mAudioManager.unregisterMediaButtonEventReceiver(new ComponentName(this.getPackageName(),
+                MediaButtonIntentReceiver.class.getName()));
         //mAudioManager.unregisterRemoteControlClient(mRemoteControlClient);
         
         // make sure there aren't any other messages coming
@@ -720,7 +722,7 @@ public class VoiceRepeaterService extends Service {
                     } else if (action.equals(Intent.ACTION_MEDIA_MOUNTED)) {
                         mMediaMountedCount++;
                         mCardId = Utils.getCardId(VoiceRepeaterService.this);
-                        reloadQueue();
+                        //reloadQueue();
                         mQueueIsSaveable = true;
                         notifyChange(QUEUE_CHANGED);
                         notifyChange(META_CHANGED);
@@ -1148,6 +1150,8 @@ public class VoiceRepeaterService extends Service {
             mCursor = null;
         }
         if (remove_status_icon) {
+            mAudioManager.unregisterMediaButtonEventReceiver(new ComponentName(this.getPackageName(),
+                    MediaButtonIntentReceiver.class.getName()));
             gotoIdleState();
         } else {
             stopForeground(false);
@@ -1155,6 +1159,8 @@ public class VoiceRepeaterService extends Service {
         if (remove_status_icon) {
             mIsSupposedToBePlaying = false;
         }
+        
+        notifyChange(PLAYSTATE_CHANGED);
     }
 
     /**

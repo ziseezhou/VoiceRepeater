@@ -729,7 +729,9 @@ public class VoiceRepeater extends ListActivity {
         
         if (isPlaying){
             queueNextRefresh(1);
+            mMediaPlayPause.setImageResource(R.drawable.media_pause);
         } else {
+            mMediaPlayPause.setImageResource(R.drawable.media_play);
             mHandler.removeMessages(REFRESH);
             mPosOverride = -1;
         }
@@ -773,6 +775,9 @@ public class VoiceRepeater extends ListActivity {
             mCollapser.setImageResource(R.drawable.tools_show_gray);
             mCollapser.setEnabled(false);
             mProgress.setEnabled(false);
+            mCurrentTime.setText("00:00");
+            mTotalTime.setText("00:00");
+            mProgress.setProgress(0);
             findViewById(R.id.tools).setVisibility(View.GONE);
         }
     }
@@ -791,8 +796,8 @@ public class VoiceRepeater extends ListActivity {
         try {
             long pos = mPosOverride < 0 ? mService.position() : mPosOverride;
             long remaining = 1000 - (pos % 1000);
-            Log.v(TAG, ">>> pos="+pos+", mDuration="+mDuration);
             if ((pos >= 0) && (mDuration > 0)) {
+                if (pos > mDuration) pos=mDuration;
                 mCurrentTime.setText(Utils.makeTimeString(this, pos / 1000));
                 
                 if (mService.isPlaying()) {
