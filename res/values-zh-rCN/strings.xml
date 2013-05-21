@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+	<string name="app_name">复读机</string>
+	<string name="action_settings">设置</string>
+    <string name="action_exit">退出</string>
+	<string name="folderKey">文件夹</string>
+    <string name="titleKey">标题</string>
+    <string name="filter">过滤</string>
+    <string name="playback_failed">播放失败.</string>
+    <string name="unknown_artist_name">未知艺术家</string>
+    <string name="unknown_album_name">未知专辑</string>
+    <string name="showFilterTip">可点击输入文件夹过滤字</string>
+    <string name="folderPre">文件夹: </string>
+    <string name="listIsNull">列表为空</string>
+</resources>
