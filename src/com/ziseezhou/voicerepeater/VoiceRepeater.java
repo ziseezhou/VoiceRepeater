@@ -94,6 +94,8 @@ public class VoiceRepeater extends ListActivity {
 	private long mLastSeekEventTime;
 	private long mPosOverride = -1;
 	private boolean mFromTouch = false;
+	private boolean mShowText = false;
+	private boolean mToolsVisible = false;
 	
 	private static final int MSG_UPDATE_UI = 0;
     private static final int MSG_UPDATE_TIMER = 1;
@@ -104,6 +106,11 @@ public class VoiceRepeater extends ListActivity {
         super.onCreate(savedInstanceState);
         requestWindowFeature(Window.FEATURE_NO_TITLE);
         setVolumeControlStream(AudioManager.STREAM_MUSIC);
+        
+        if (savedInstanceState != null) {
+            mToolsVisible = savedInstanceState.getBoolean("toolsvisible", false);
+        } 
+        
         setContentView(R.layout.main);
         
         mCursorCols = new String[] {
@@ -141,6 +148,9 @@ public class VoiceRepeater extends ListActivity {
         mMediaRepeater = (ImageButton) findViewById(R.id.media_repeater);
         mMediaRepeater.setOnClickListener(mMediaRepeaterListener);
 
+        // initialize to disabled
+        mCollapser.setEnabled(false);
+        mProgress.setEnabled(false);
         
         if (mProgress instanceof SeekBar) {
             SeekBar seeker = (SeekBar) mProgress;
@@ -164,8 +174,6 @@ public class VoiceRepeater extends ListActivity {
             mAdapter.setActivity(this);
             setListAdapter(mAdapter);
         }
-        
-        enableTools(false);
         
         registerExternalStorageListener();
     }
@@ -212,7 +220,7 @@ public class VoiceRepeater extends ListActivity {
                     new String[] {},
                     new int[] {},
                     false,
-                    true);
+                    false);
             setListAdapter(mAdapter);
             //setTitle(R.string.working_songs);
             getTrackCursor(mAdapter.getQueryHandler(), null, true);
@@ -246,6 +254,12 @@ public class VoiceRepeater extends ListActivity {
     }
     
     @Override
+    protected void onSaveInstanceState(Bundle outState) {
+        outState.putBoolean("toolsvisible", mToolsVisible);
+        super.onSaveInstanceState(outState);
+    }
+    
+    @Override
     protected void onResume() {
     	super.onResume();
     	updateUI();
@@ -257,6 +271,9 @@ public class VoiceRepeater extends ListActivity {
         Log.v(TAG, ">>> onStart");
         
         mRefreshShouldPause = false;
+        
+        // make sure that service won't exit after activity unbind
+        startService(new Intent(this, VoiceRepeaterService.class));
         
         if (bindService(new Intent(this, VoiceRepeaterService.class),
                 mConnection, Context.BIND_AUTO_CREATE)) {
@@ -574,11 +591,24 @@ public class VoiceRepeater extends ListActivity {
             
             EditText edFolder = (EditText)findViewById(R.id.folderKey);
             edFolder.setImeOptions(EditorInfo.IME_ACTION_NONE);
+            
+            String oldString = mFilterFolderString;
             mFilterFolderString = edFolder.getText().toString();
-            Utils.setStringPref(VoiceRepeater.this, PREF_KEY_FOLDERSTRING, mFilterFolderString);
+            
+            if (!mFilterFolderString.equals(oldString)) {
+                Utils.setStringPref(VoiceRepeater.this, PREF_KEY_FOLDERSTRING, mFilterFolderString);
+                getTrackCursor(mAdapter.getQueryHandler(), null, true);
+                
+                // notify the service, list has been changed
+                // clear the playlist in service.
+                try {
+                    if (mService != null) {
+                        mService.clearQueue();
+                    }
+                } catch(RemoteException ex) {ex.printStackTrace();}
+            }
             
             postUpdateUI();
-            getTrackCursor(mAdapter.getQueryHandler(), null, true);
     	};
     };
     
@@ -603,9 +633,9 @@ public class VoiceRepeater extends ListActivity {
     	public void onClick(android.view.View v) {
     		boolean isToolsVisible = View.VISIBLE == findViewById(R.id.tools).getVisibility();
     		if (isToolsVisible) {
-    			findViewById(R.id.tools).setVisibility(View.GONE);
+    		    mToolsVisible = false;
     		} else {
-    			findViewById(R.id.tools).setVisibility(View.VISIBLE);
+    		    mToolsVisible = true;
     		}
     		
     		postUpdateUI();
@@ -684,7 +714,16 @@ public class VoiceRepeater extends ListActivity {
     
     private OnClickListener mMediaTextListener = new OnClickListener() {
         public void onClick(android.view.View v) {
-            ;
+            TextView textView = (TextView)findViewById(R.id.textView);
+            boolean isListVisible = mTrackList.getVisibility() == View.VISIBLE;
+            if (isListVisible) {
+                mTrackList.setVisibility(View.GONE);
+                textView.setVisibility(View.VISIBLE);
+                textView.setText(R.string.no_text_file);
+            } else {
+                mTrackList.setVisibility(View.VISIBLE);
+                textView.setVisibility(View.GONE);
+            }
         }
     };
     
@@ -722,11 +761,10 @@ public class VoiceRepeater extends ListActivity {
             try {
                 isPlaying = mService.isPlaying();
                 hasAudioInService = (mService.getAudioId() != -1);
+                enableTools(hasAudioInService);
             } catch (Exception e) { e.printStackTrace(); }
         }
 		
-		Log.v(TAG, ">>> updateUI: serivce="+mService+", isPlaying="+isPlaying);
-        
         if (isPlaying){
             queueNextRefresh(1);
             mMediaPlayPause.setImageResource(R.drawable.media_pause);
@@ -735,8 +773,6 @@ public class VoiceRepeater extends ListActivity {
             mHandler.removeMessages(REFRESH);
             mPosOverride = -1;
         }
-        
-        enableTools(hasAudioInService);
     }
     
     private void setRepeatButtonImage() {
@@ -763,11 +799,12 @@ public class VoiceRepeater extends ListActivity {
             mCollapser.setEnabled(true);
             mProgress.setEnabled(true);
             
-            boolean isToolsVisible = View.VISIBLE == findViewById(R.id.tools).getVisibility();
-            if (isToolsVisible) {
+            if (mToolsVisible) {
+                findViewById(R.id.tools).setVisibility(View.VISIBLE);
                 mCollapser.setImageResource(R.drawable.tools_hide);
-                ((TextView)findViewById(R.id.trackInfo)).setSelected(true);
+                ((TextView)findViewById(R.id.trackInfo)).setSelected(true);// for enable marquee
             } else {
+                findViewById(R.id.tools).setVisibility(View.GONE);
                 mCollapser.setImageResource(R.drawable.tools_show);
             }
             
@@ -779,6 +816,11 @@ public class VoiceRepeater extends ListActivity {
             mTotalTime.setText("00:00");
             mProgress.setProgress(0);
             findViewById(R.id.tools).setVisibility(View.GONE);
+            
+            mTrackList.setVisibility(View.VISIBLE);
+            findViewById(R.id.textView).setVisibility(View.GONE);
+            
+            mToolsVisible = false;
         }
     }
     
@@ -859,7 +901,7 @@ public class VoiceRepeater extends ListActivity {
             ((TextView)findViewById(R.id.trackInfo)).setText(path);
             
             mDuration = mService.duration();
-            Log.e(TAG, ">>> updateTrackInfo(): duration="+mDuration);
+            refreshNow();
             mTotalTime.setText(Utils.makeTimeString(this, mDuration / 1000));
         } catch (RemoteException ex) {
             finish();
@@ -1130,20 +1172,8 @@ public class VoiceRepeater extends ListActivity {
                 }
             }
             
-            // Determining whether and where to show the "now playing indicator
-            // is tricky, because we don't actually keep track of where the songs
-            // in the current playlist came from after they've started playing.
-            //
-            // If the "current playlists" is shown, then we can simply match by position,
-            // otherwise, we need to match by id. Match-by-id gets a little weird if
-            // a song appears in a playlist more than once, and you're in edit-playlist
-            // mode. In that case, both items will have the "now playing" indicator.
-            // For this reason, we don't show the play indicator at all when in edit
-            // playlist mode (except when you're viewing the "current playlist",
-            // which is not really a playlist)
-            if ( (mIsNowPlaying && cursor.getPosition() == id) ||
-                 (!mIsNowPlaying && !mDisableNowPlayingIndicator && cursor.getLong(mAudioIdIdx) == id)) {
-                iv.setImageResource(R.drawable.indicator_ic_mp_playing_list);
+            if ((!mIsNowPlaying && !mDisableNowPlayingIndicator && cursor.getLong(mAudioIdIdx) == id)) {
+                iv.setImageResource(R.drawable.indicator_playing_list);
                 iv.setVisibility(View.VISIBLE);
             } else {
                 iv.setVisibility(View.GONE);

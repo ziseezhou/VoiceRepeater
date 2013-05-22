@@ -34,9 +34,10 @@ interface IVoiceRepeaterService {
     String getTrackName();
     String getTrackFilePath();
     long [] getQueue();
+    void clearQueue();
     String getPath();
     long getAudioId();
-    void setRepeatMode(int shufflemode);
+    void setRepeatMode(int loopmode);
     int getRepeatMode();
     int getMediaMountedCount();
     int getAudioSessionId();

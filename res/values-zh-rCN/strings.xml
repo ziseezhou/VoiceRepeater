@@ -12,4 +12,6 @@
     <string name="showFilterTip">可点击输入文件夹过滤字</string>
     <string name="folderPre">文件夹: </string>
     <string name="listIsNull">列表为空</string>
+    <string name="playlist_changed">播放列表已改变，请重新选择播放.</string>
+    <string name="no_text_file">没有匹配的文本文件。\n文本文件需要与当前音频文件名称相同，且扩展名为txt或者lrc.</string>
 </resources>

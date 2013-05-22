@@ -91,7 +91,7 @@ public class VoiceRepeaterService extends Service {
     private WakeLock mWakeLock;
 	private boolean mServiceInUse = false;
     private boolean mPausedByTransientLossOfFocus = false; // used to track what type of audio focus loss caused the playback to pause
-    private static final int IDLE_DELAY = 60000; // interval after which we stop the service when idle
+    private static final int IDLE_DELAY = 10000; // interval after which we stop the service when idle
     private MultiPlayer mPlayer;
     private boolean mIsSupposedToBePlaying = false;
     private int mPlayPos = -1;
@@ -392,6 +392,7 @@ public class VoiceRepeaterService extends Service {
 	
 	@Override
 	public void onDestroy() {
+	    Log.e(TAG, ">>> onDestory()");
 	    // Check that we're not being destroyed while something is still playing.
         if (isPlaying()) {
             Log.e(TAG, "Service being destroyed while still playing.");
@@ -661,6 +662,8 @@ public class VoiceRepeaterService extends Service {
         // Take a snapshot of the current playlist
         saveQueue(true);
 
+        Log.e(TAG, ">>> onUnbind isplaying="+isPlaying());
+        
         if (isPlaying() || mPausedByTransientLossOfFocus) {
             // something is currently playing, or will be playing once 
             // an in-progress action requesting audio focus ends, so don't stop the service now.
@@ -676,6 +679,7 @@ public class VoiceRepeaterService extends Service {
             return true;
         }
         
+        Log.e(TAG, ">>> mPlayListLen="+mPlayListLen);
         // No active playlist, OK to stop the service right now
         stopSelf(mServiceStartId);
         return true;
@@ -684,8 +688,9 @@ public class VoiceRepeaterService extends Service {
 	private Handler mDelayedStopHandler = new Handler() {
         @Override
         public void handleMessage(Message msg) {
+            Log.e(TAG, ">>> IDLE_DELAY isplaying="+isPlaying());
             // Check again to make sure nothing is playing right now
-            if (isPlaying() || mPausedByTransientLossOfFocus || mServiceInUse
+            if (isPlaying() || mStatus!=null || mPausedByTransientLossOfFocus || mServiceInUse
                     || mMediaplayerHandler.hasMessages(TRACK_ENDED)) {
                 return;
             }
@@ -909,6 +914,12 @@ public class VoiceRepeaterService extends Service {
         }
     }
     
+    public void clearQueue() {
+        synchronized (this) {
+            mPlayListLen = 0;
+        }
+    }
+    
     private Cursor getCursorForId(long lid) {
         String id = String.valueOf(lid);
 
@@ -1113,16 +1124,8 @@ public class VoiceRepeaterService extends Service {
         mStatus.flags |= Notification.FLAG_ONGOING_EVENT;
         mStatus.icon = R.drawable.ic_launcher;
         mStatus.contentIntent = PendingIntent.getActivity(this, 0,
-                new Intent("com.ziseezhou.voicerepeater.MAIN")
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK), 0);
+                new Intent("com.ziseezhou.voicerepeater.MAIN"), 0);
         startForeground(PLAYBACKSERVICE_STATUS, mStatus);
-        
-        //mStatus.contentIntent = PendingIntent.getActivity(this, 0,
-        //        new Intent("com.ziseezhou.voicerepeater.ONTIM_PLAYBACK_VIEWER")
-        //        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK), 0);
-        //startForeground(PLAYBACKSERVICE_STATUS, mStatus);
-        
-        
     }
     
     private void updateNotification() {
@@ -1141,6 +1144,7 @@ public class VoiceRepeaterService extends Service {
     }
     
     private void stop(boolean remove_status_icon) {
+        Log.e(TAG, ">>> stop="+remove_status_icon);
         if (mPlayer.isInitialized()) {
             mPlayer.stop();
         }
@@ -1168,7 +1172,6 @@ public class VoiceRepeaterService extends Service {
      */
     public void stop() {
         stop(true);
-        gotoIdleState();
     }
     
     /**
@@ -1197,12 +1200,17 @@ public class VoiceRepeaterService extends Service {
     
     public void prev() {
         synchronized (this) {
-            {
-                if (mPlayPos > 0) {
-                    mPlayPos--;
-                } else {
-                    mPlayPos = mPlayListLen - 1;
-                }
+            if (mPlayListLen <= 0) {
+                Log.d(TAG, "No play queue");
+                Toast.makeText(this, R.string.playlist_changed, Toast.LENGTH_SHORT).show();
+                stop();
+                return;
+            }
+            
+            if (mPlayPos > 0) {
+                mPlayPos--;
+            } else {
+                mPlayPos = mPlayListLen - 1;
             }
             stop(false);
             openCurrentAndNext();
@@ -1241,6 +1249,8 @@ public class VoiceRepeaterService extends Service {
         synchronized (this) {
             if (mPlayListLen <= 0) {
                 Log.d(TAG, "No play queue");
+                Toast.makeText(this, R.string.playlist_changed, Toast.LENGTH_LONG).show();
+                stop();
                 return;
             }
 
@@ -1263,6 +1273,7 @@ public class VoiceRepeaterService extends Service {
     }
     
     private void gotoIdleState() {
+        Log.e(TAG, ">>> gotoIdleState()");
         mStatus = null;
         mDelayedStopHandler.removeCallbacksAndMessages(null);
         Message msg = mDelayedStopHandler.obtainMessage();
@@ -1572,6 +1583,7 @@ public class VoiceRepeaterService extends Service {
         }
 
         public void stop() {
+            Log.e(TAG, ">>> player-stop()");
             mMediaPlayer.reset();
             mIsInitialized = false;
         }
@@ -1580,11 +1592,13 @@ public class VoiceRepeaterService extends Service {
          * You CANNOT use this player anymore after calling release()
          */
         public void release() {
+            Log.e(TAG, ">>> player-release()");
             stop();
             mMediaPlayer.release();
         }
         
         public void pause() {
+            Log.e(TAG, ">>> pause()");
             mMediaPlayer.pause();
         }
         
@@ -1609,6 +1623,7 @@ public class VoiceRepeaterService extends Service {
             public boolean onError(MediaPlayer mp, int what, int extra) {
                 switch (what) {
                 case MediaPlayer.MEDIA_ERROR_SERVER_DIED:
+                    Log.e(TAG, ">>> onError media error server died");
                     mIsInitialized = false;
                     mMediaPlayer.release();
                     // Creating a new MediaPlayer and settings its wakemode does not
@@ -1712,6 +1727,9 @@ public class VoiceRepeaterService extends Service {
         }
         public long [] getQueue() {
             return mService.get().getQueue();
+        }
+        public void clearQueue() {
+            mService.get().clearQueue();
         }
         public String getPath() {
             return mService.get().getPath();
