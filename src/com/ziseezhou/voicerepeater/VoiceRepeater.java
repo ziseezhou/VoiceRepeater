@@ -13,9 +13,11 @@ DATE         AUTHOR          ACTIVEID         BRIEF
 *************************************************************************/
 package com.ziseezhou.voicerepeater;
 
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileReader;
 import java.util.Arrays;
 
-import junit.framework.Test;
 
 import android.media.AudioManager;
 import android.net.Uri;
@@ -24,9 +26,7 @@ import android.os.Handler;
 import android.os.IBinder;
 import android.os.Message;
 import android.os.RemoteException;
-import android.os.SystemClock;
 import android.provider.MediaStore;
-import android.app.Activity;
 import android.app.ListActivity;
 import android.content.AsyncQueryHandler;
 import android.content.BroadcastReceiver;
@@ -47,7 +47,6 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
 import android.view.View.OnClickListener;
-import android.view.WindowManager.LayoutParams;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.EditText;
@@ -55,6 +54,7 @@ import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.ListView;
 import android.widget.ProgressBar;
+import android.widget.ScrollView;
 import android.widget.SeekBar;
 import android.widget.SeekBar.OnSeekBarChangeListener;
 import android.widget.TextView;
@@ -96,6 +96,7 @@ public class VoiceRepeater extends ListActivity {
 	private boolean mFromTouch = false;
 	private boolean mShowText = false;
 	private boolean mToolsVisible = false;
+	private String mAudioText;
 	
 	private static final int MSG_UPDATE_UI = 0;
     private static final int MSG_UPDATE_TIMER = 1;
@@ -109,6 +110,7 @@ public class VoiceRepeater extends ListActivity {
         
         if (savedInstanceState != null) {
             mToolsVisible = savedInstanceState.getBoolean("toolsvisible", false);
+            mShowText = savedInstanceState.getBoolean("showtext", false);
         } 
         
         setContentView(R.layout.main);
@@ -256,6 +258,7 @@ public class VoiceRepeater extends ListActivity {
     @Override
     protected void onSaveInstanceState(Bundle outState) {
         outState.putBoolean("toolsvisible", mToolsVisible);
+        outState.putBoolean("showtext", mShowText);
         super.onSaveInstanceState(outState);
     }
     
@@ -489,7 +492,6 @@ public class VoiceRepeater extends ListActivity {
                 //updateUITimerView();
                 break;
             case REFRESH:
-                Log.v(TAG, ">>> refresh");
                 long next = refreshNow();
                 queueNextRefresh(next);
                 break;
@@ -714,16 +716,14 @@ public class VoiceRepeater extends ListActivity {
     
     private OnClickListener mMediaTextListener = new OnClickListener() {
         public void onClick(android.view.View v) {
-            TextView textView = (TextView)findViewById(R.id.textView);
             boolean isListVisible = mTrackList.getVisibility() == View.VISIBLE;
             if (isListVisible) {
-                mTrackList.setVisibility(View.GONE);
-                textView.setVisibility(View.VISIBLE);
-                textView.setText(R.string.no_text_file);
+                mShowText = true;
             } else {
-                mTrackList.setVisibility(View.VISIBLE);
-                textView.setVisibility(View.GONE);
+                mShowText = false;
             }
+            
+            postUpdateUI();
         }
     };
     
@@ -793,6 +793,101 @@ public class VoiceRepeater extends ListActivity {
         }
     }
     
+    private String searchTextFile(String audioPath){
+        String prePath  = null;
+        String tryPath  = null;
+
+        Log.d(TAG, "searchTextFile() audiopath="+audioPath);
+        if (audioPath == null) {
+            return null;
+        }
+
+        // remove the extension name
+        if (null!=audioPath && audioPath.length()>0){
+            int i = audioPath.lastIndexOf('.');
+            if (i>-1 && i<audioPath.length()){
+                prePath = audioPath.substring(0, i);
+            }
+        }
+
+        if (null==prePath || prePath.length()<=0){
+            Log.w(TAG, "searchTextFile() prePath="+prePath);
+            return null;
+        }
+
+        // try every extension
+        String lrcExt[] = {"txt", "TXT", "Txt", "tXt", "txT", "TXt", "tXT", "TxT", 
+                           "lrc", "LRC", "Lrc", "lRc", "lrC", "LRc", "lRC", "LrC"};
+        for (int i=0; i<lrcExt.length; ++i){
+            tryPath = prePath + "." + lrcExt[i];
+
+            Log.d(TAG, "searchTextFile() tryPath="+tryPath);
+
+            File f = new File(tryPath);
+            if (f.isFile() && f.exists()){
+                if (10*1024 < f.length()){
+                    Log.e(TAG, "searchTextFile() file="+tryPath+", size="+f.length());
+                    continue;
+                }
+
+                return tryPath;
+            }
+        }
+
+        // final, still there is no available one.
+        Log.d(TAG, "searchTextFile() cannot find the file.");
+        return null;
+    }
+    
+    private void setAudioText() {
+        TextView textView = (TextView)findViewById(R.id.textView);
+        
+        if (mAudioText!=null && mAudioText.length()>0){
+            textView.setText(mAudioText);
+            return;
+        }
+        
+        // load the audio text
+        String audioPath=null, textPath;
+        StringBuilder text = new StringBuilder();
+        
+        try {
+            audioPath = mService.getTrackFilePath();
+        } catch (RemoteException ex) { ex.printStackTrace(); }
+        
+        textPath = searchTextFile(audioPath);
+        if (textPath == null) {
+            textView.setText(R.string.no_text_file);
+            return;
+        }
+        
+        try {
+            File f = new File(textPath);
+            if (f.isFile() && f.exists()){
+                BufferedReader in = new BufferedReader(new FileReader(f));
+                String line;
+                while (null != (line=in.readLine())){
+                    text.append(line);
+                    text.append('\n');
+                }
+            }
+        } catch (Exception e){
+            e.printStackTrace();
+            return;
+        }finally {
+            ;
+        }
+        
+        mAudioText = text.toString();
+        if (mAudioText==null || mAudioText.length()<=0){
+            textView.setText(R.string.no_text_file);
+            return;
+        }
+        
+        textView.setText(mAudioText);
+        ((ScrollView)findViewById(R.id.textViewContainer)).scrollTo(0, 0);
+    }
+    
     private void enableTools(boolean enable){
         Log.v(TAG, ">>> enableTools="+enable);
         if (enable) {
@@ -808,6 +903,22 @@ public class VoiceRepeater extends ListActivity {
                 mCollapser.setImageResource(R.drawable.tools_show);
             }
             
+            if (mShowText) {
+                ;
+            } else {
+                ;
+            }
+            
+            View textViewContainer = findViewById(R.id.textViewContainer);
+            if (mShowText) {
+                mTrackList.setVisibility(View.GONE);
+                setAudioText();
+                textViewContainer.setVisibility(View.VISIBLE);
+            } else {
+                mTrackList.setVisibility(View.VISIBLE);
+                textViewContainer.setVisibility(View.GONE);
+            }
+            
         } else {
             mCollapser.setImageResource(R.drawable.tools_show_gray);
             mCollapser.setEnabled(false);
@@ -818,9 +929,10 @@ public class VoiceRepeater extends ListActivity {
             findViewById(R.id.tools).setVisibility(View.GONE);
             
             mTrackList.setVisibility(View.VISIBLE);
-            findViewById(R.id.textView).setVisibility(View.GONE);
+            findViewById(R.id.textViewContainer).setVisibility(View.GONE);
             
             mToolsVisible = false;
+            mShowText = false;
         }
     }
     
@@ -899,7 +1011,7 @@ public class VoiceRepeater extends ListActivity {
 //            mAlbum.setVisibility(View.VISIBLE);
             
             ((TextView)findViewById(R.id.trackInfo)).setText(path);
-            
+            mAudioText = null;
             mDuration = mService.duration();
             refreshNow();
             mTotalTime.setText(Utils.makeTimeString(this, mDuration / 1000));
