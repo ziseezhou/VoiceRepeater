@@ -13,5 +13,7 @@
     <string name="folderPre">文件夹: </string>
     <string name="listIsNull">列表为空</string>
     <string name="playlist_changed">播放列表已改变，请重新选择播放.</string>
-    <string name="no_text_file">没有匹配的文本文件。\n文本文件需要与当前音频文件名称相同，且扩展名为txt或者lrc.</string>
+    <string name="no_text_file">没有匹配的文本文件。\n文本文件需要与当前音频文件名称相同，且扩展名为txt或者lrc。(例如：sample.mp3 - sample.txt)</string>
+    <string name="lyrics_load">加载文本 ... </string>
+    <string name="lyrics_file_err">文本文件格式错误或者过大(应该小于10K)</string>
 </resources>

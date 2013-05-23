@@ -37,8 +37,10 @@ interface IVoiceRepeaterService {
     void clearQueue();
     String getPath();
     long getAudioId();
-    void setRepeatMode(int loopmode);
-    int getRepeatMode();
+    void setLoopMode(int loopmode);
+    int getLoopMode();
+    void touchVoiceRepeat(long clickTime);
+    int getVoiceRepeatMode();
     int getMediaMountedCount();
     int getAudioSessionId();
 }

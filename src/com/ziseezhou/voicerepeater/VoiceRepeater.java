@@ -15,7 +15,9 @@ package com.ziseezhou.voicerepeater;
 
 import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileReader;
+import java.io.InputStreamReader;
 import java.util.Arrays;
 
 
@@ -59,6 +61,7 @@ import android.widget.SeekBar;
 import android.widget.SeekBar.OnSeekBarChangeListener;
 import android.widget.TextView;
 import android.widget.Toast;
+import com.ziseezhou.lyrics.LyricsFileEncodingSampleDet;
 
 public class VoiceRepeater extends ListActivity {
 	private static final String TAG = "VoiceRepeater";
@@ -149,6 +152,7 @@ public class VoiceRepeater extends ListActivity {
         mMediaForward.setOnClickListener(mMediaForwardListener);
         mMediaRepeater = (ImageButton) findViewById(R.id.media_repeater);
         mMediaRepeater.setOnClickListener(mMediaRepeaterListener);
+        findViewById(R.id.timeContainer).setOnClickListener(mClickTimeBox);
 
         // initialize to disabled
         mCollapser.setEnabled(false);
@@ -687,18 +691,18 @@ public class VoiceRepeater extends ListActivity {
                 return;
             }
             try {
-                int mode = mService.getRepeatMode();
-                if (mode == VoiceRepeaterService.REPEAT_NONE) {
-                    mService.setRepeatMode(VoiceRepeaterService.REPEAT_ALL);
+                int mode = mService.getLoopMode();
+                if (mode == VoiceRepeaterService.LOOP_NONE) {
+                    mService.setLoopMode(VoiceRepeaterService.LOOP_ALL);
                     //showToast(R.string.repeat_all_notif);
-                } else if (mode == VoiceRepeaterService.REPEAT_ALL) {
-                    mService.setRepeatMode(VoiceRepeaterService.REPEAT_CURRENT);
+                } else if (mode == VoiceRepeaterService.LOOP_ALL) {
+                    mService.setLoopMode(VoiceRepeaterService.LOOP_CURRENT);
                     //showToast(R.string.repeat_current_notif);
                 } else {
-                    mService.setRepeatMode(VoiceRepeaterService.REPEAT_NONE);
+                    mService.setLoopMode(VoiceRepeaterService.LOOP_NONE);
                     //showToast(R.string.repeat_off_notif);
                 }
-                setRepeatButtonImage();
+                setLoopButtonImage();
             } catch (RemoteException ex) {
             }
         }
@@ -739,7 +743,63 @@ public class VoiceRepeater extends ListActivity {
     
     private OnClickListener mMediaRepeaterListener = new OnClickListener() {
         public void onClick(android.view.View v) {
-            ;
+            if (mService == null) return;
+            try {
+                mService.touchVoiceRepeat(System.currentTimeMillis());
+            } catch (RemoteException ex) {
+            }
+            setVoiceRepeatButtonImgae();
+        }
+    };
+    
+    private OnClickListener mClickTimeBox = new OnClickListener() {
+        public void onClick(android.view.View v) {
+            if (mService==null || mTrackCursor==null || mTrackCursor.getCount()<=0) {
+                return;
+            }
+            
+            try {
+                long curAudioId = mService.getAudioId();
+                if (curAudioId == -1) {
+                    return;
+                }
+                
+                int listBegin = mTrackList.getFirstVisiblePosition();
+                int listEnd = mTrackList.getLastVisiblePosition();
+                if (listEnd <= listBegin) {
+                    return;
+                }
+                
+                int interval = listEnd - listBegin;
+                if (mTrackCursor.getCount() <= interval) {
+                    return;
+                }
+                
+                // check the playing audio is or not on show
+                int keyId = mTrackCursor.getColumnIndexOrThrow(MediaStore.Audio.Media._ID);
+                for (int i=0; i<=interval; ++i) {
+                    mTrackCursor.moveToPosition(listBegin+i);
+                    if (curAudioId == mTrackCursor.getLong(keyId)) {
+                        if (i==0 || i==interval) {
+                            setSelection(listBegin+i);
+                        }
+                        
+                        return ;
+                    }
+                }
+                
+                // search the curAudioId position in cursor
+                mTrackCursor.moveToFirst();
+                while (! mTrackCursor.isAfterLast()) {
+                    if (curAudioId == mTrackCursor.getLong(keyId)) {
+                        setSelection(mTrackCursor.getPosition());
+                        break;
+                    }
+                    mTrackCursor.moveToNext();
+                }
+            } catch (RemoteException e) {
+                e.printStackTrace();
+            }
         }
     };
     
@@ -762,6 +822,8 @@ public class VoiceRepeater extends ListActivity {
                 isPlaying = mService.isPlaying();
                 hasAudioInService = (mService.getAudioId() != -1);
                 enableTools(hasAudioInService);
+                setLoopButtonImage();
+                setVoiceRepeatButtonImgae();
             } catch (Exception e) { e.printStackTrace(); }
         }
 		
@@ -775,14 +837,14 @@ public class VoiceRepeater extends ListActivity {
         }
     }
     
-    private void setRepeatButtonImage() {
+    private void setLoopButtonImage() {
         if (mService == null) return;
         try {
-            switch (mService.getRepeatMode()) {
-                case VoiceRepeaterService.REPEAT_ALL:
+            switch (mService.getLoopMode()) {
+                case VoiceRepeaterService.LOOP_ALL:
                     mMediaLoop.setImageResource(R.drawable.media_loop_all);
                     break;
-                case VoiceRepeaterService.REPEAT_CURRENT:
+                case VoiceRepeaterService.LOOP_CURRENT:
                     mMediaLoop.setImageResource(R.drawable.media_loop_once);
                     break;
                 default:
@@ -793,11 +855,29 @@ public class VoiceRepeater extends ListActivity {
         }
     }
     
+    private void setVoiceRepeatButtonImgae() {
+        if (mService == null) return;
+        try {
+            switch (mService.getVoiceRepeatMode()) {
+                case VoiceRepeaterService.VOICEREPEAT_TAG_START_TIME:
+                    mMediaRepeater.setImageResource(R.drawable.media_repeater_start);
+                    break;
+                case VoiceRepeaterService.VOICEREPEAT_PLAYING:
+                    mMediaRepeater.setImageResource(R.drawable.media_repeater_play);
+                    break;
+                default:
+                    mMediaRepeater.setImageResource(R.drawable.media_repeater_idle);
+                    break;
+            }
+        } catch (RemoteException ex) {
+        }
+    }
+    
     private String searchTextFile(String audioPath){
         String prePath  = null;
         String tryPath  = null;
 
-        Log.d(TAG, "searchTextFile() audiopath="+audioPath);
+        Log.v(TAG, "searchTextFile() audiopath="+audioPath);
         if (audioPath == null) {
             return null;
         }
@@ -821,7 +901,7 @@ public class VoiceRepeater extends ListActivity {
         for (int i=0; i<lrcExt.length; ++i){
             tryPath = prePath + "." + lrcExt[i];
 
-            Log.d(TAG, "searchTextFile() tryPath="+tryPath);
+            Log.v(TAG, "searchTextFile() tryPath="+tryPath);
 
             File f = new File(tryPath);
             if (f.isFile() && f.exists()){
@@ -835,7 +915,7 @@ public class VoiceRepeater extends ListActivity {
         }
 
         // final, still there is no available one.
-        Log.d(TAG, "searchTextFile() cannot find the file.");
+        Log.v(TAG, "searchTextFile() cannot find the file.");
         return null;
     }
     
@@ -864,7 +944,13 @@ public class VoiceRepeater extends ListActivity {
         try {
             File f = new File(textPath);
             if (f.isFile() && f.exists()){
-                BufferedReader in = new BufferedReader(new FileReader(f));
+                //BufferedReader in = new BufferedReader(new FileReader(f));
+                
+                String enc = LyricsFileEncodingSampleDet.getEncodeingName(textPath);
+                Log.v(TAG, ">>> audioText enc="+enc);
+                
+                InputStreamReader reader= new InputStreamReader(new FileInputStream(f), enc);
+                BufferedReader in = new BufferedReader(reader);
                 String line;
                 while (null != (line=in.readLine())){
                     text.append(line);
@@ -977,7 +1063,6 @@ public class VoiceRepeater extends ListActivity {
     }
     
     private void updateTrackInfo() {
-        Log.e(TAG, ">>> updateTrackInfo(): mService="+mService);
         if (mService == null) {
             return;
         }
@@ -989,26 +1074,6 @@ public class VoiceRepeater extends ListActivity {
                 //finish();
                 //return;
             }
-            
-//            long songid = mService.getAudioId(); 
-//            ((View) mArtistName.getParent()).setVisibility(View.VISIBLE);
-//            ((View) mAlbumName.getParent()).setVisibility(View.VISIBLE);
-//            String artistName = mService.getArtistName();
-//            if (MediaStore.UNKNOWN_STRING.equals(artistName)) {
-//                artistName = getString(R.string.unknown_artist_name);
-//            }
-//            mArtistName.setText(artistName);
-//            String albumName = mService.getAlbumName();
-//            long albumid = mService.getAlbumId();
-//            if (MediaStore.UNKNOWN_STRING.equals(albumName)) {
-//                albumName = getString(R.string.unknown_album_name);
-//                albumid = -1;
-//            }
-//            mAlbumName.setText(albumName);
-//            mTrackName.setText(mService.getTrackName());
-//            mAlbumArtHandler.removeMessages(GET_ALBUM_ART);
-//            mAlbumArtHandler.obtainMessage(GET_ALBUM_ART, new AlbumSongIdWrapper(albumid, songid)).sendToTarget();
-//            mAlbum.setVisibility(View.VISIBLE);
             
             ((TextView)findViewById(R.id.trackInfo)).setText(path);
             mAudioText = null;
@@ -1033,10 +1098,6 @@ public class VoiceRepeater extends ListActivity {
             mReScanHandler.sendEmptyMessageDelayed(0, 1000);
             return;
         }
-
-        //MusicUtils.hideDatabaseError(this);
-        //mUseLastListPos = MusicUtils.updateButtonBar(this, R.id.songtab);
-        //setTitle();
 
         // Restore previous position
         if (mLastListPosCourse >= 0 && mUseLastListPos) {

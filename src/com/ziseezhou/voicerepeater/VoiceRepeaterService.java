@@ -15,6 +15,8 @@ package com.ziseezhou.voicerepeater;
 
 import java.io.IOException;
 import java.lang.ref.WeakReference;
+
+import android.R.integer;
 import android.app.Notification;
 import android.app.PendingIntent;
 import android.app.Service;
@@ -38,6 +40,7 @@ import android.os.IBinder;
 import android.os.Message;
 import android.os.PowerManager;
 import android.os.PowerManager.WakeLock;
+import android.os.RemoteException;
 import android.os.SystemClock;
 import android.provider.MediaStore;
 import android.util.Log;
@@ -82,11 +85,16 @@ public class VoiceRepeaterService extends Service {
     private static final int FADEDOWN = 5;
     private static final int FADEUP = 6;
     private static final int TRACK_WENT_TO_NEXT = 7;
+    private static final int VOICE_REPEAT_TIMER = 8;
     private static final int MAX_HISTORY_SIZE = 100;
     
-    public static final int REPEAT_NONE = 0;
-    public static final int REPEAT_CURRENT = 1;
-    public static final int REPEAT_ALL = 2;
+    public static final int LOOP_NONE = 0;
+    public static final int LOOP_CURRENT = 1;
+    public static final int LOOP_ALL = 2;
+    
+    public static final int VOICEREPEAT_NONE = 0;
+    public static final int VOICEREPEAT_TAG_START_TIME = 1;
+    public static final int VOICEREPEAT_PLAYING = 2;
     
     private WakeLock mWakeLock;
 	private boolean mServiceInUse = false;
@@ -98,7 +106,10 @@ public class VoiceRepeaterService extends Service {
     private int mNextPlayPos = -1;
     private Cursor mCursor;
     private long [] mPlayList = null;
-    private int mRepeatMode = REPEAT_NONE;
+    private int mLoopMode = LOOP_NONE;
+    private int mVoiceRepeatMode = VOICEREPEAT_NONE;
+    private long mVoiceRepeatStartTime = 0;
+    private long mVoiceRepeatEndTime = 0;
     private SharedPreferences mPreferences;
     private int mCardId;
     private BroadcastReceiver mUnmountReceiver = null;
@@ -130,7 +141,7 @@ public class VoiceRepeaterService extends Service {
         float mCurrentVolume = 1.0f;
         @Override
         public void handleMessage(Message msg) {
-            Log.v(TAG, "mMediaplayerHandler.handleMessage " + msg.what);
+            //Log.v(TAG, "mMediaplayerHandler.handleMessage " + msg.what);
             switch (msg.what) {
                 case FADEDOWN:
                     mCurrentVolume -= .05f;
@@ -172,7 +183,13 @@ public class VoiceRepeaterService extends Service {
                     updateNotification();
                     break;
                 case TRACK_ENDED:
-                    if (mRepeatMode == REPEAT_CURRENT) {
+                    if (mVoiceRepeatMode != VOICEREPEAT_NONE) {
+                        mVoiceRepeatMode = VOICEREPEAT_PLAYING;
+                        seek(mVoiceRepeatStartTime);
+                        play();
+                        notifyChange(REFRESH);
+                        // need not a timer for end equal the duration
+                    } else if (mLoopMode == LOOP_CURRENT) {
                         seek(0);
                         play();
                     } else {
@@ -222,6 +239,10 @@ public class VoiceRepeaterService extends Service {
                     }
                     break;
 
+                case VOICE_REPEAT_TIMER:
+                    QueryVoiceRepeatTimer();
+                    break;
+                    
                 default:
                     break;
             }
@@ -334,9 +355,15 @@ public class VoiceRepeaterService extends Service {
                 //seek(0);
             }  else if (CMDREWIND.equals(cmd)) {
                 int repcnt = intent.getIntExtra("repcnt", 1);
+                if (mVoiceRepeatMode != VOICEREPEAT_NONE) {
+                    resetVoiceRepeat();
+                }
                 scanBackward(repcnt);
             } else if (CMDFORWARD.equals(cmd)) {
                 int repcnt = intent.getIntExtra("repcnt", 1);
+                if (mVoiceRepeatMode != VOICEREPEAT_NONE) {
+                    resetVoiceRepeat();
+                }
                 scanForward(repcnt);
             }
         }
@@ -392,10 +419,10 @@ public class VoiceRepeaterService extends Service {
 	
 	@Override
 	public void onDestroy() {
-	    Log.e(TAG, ">>> onDestory()");
+	    Log.v(TAG, ">>> onDestory()");
 	    // Check that we're not being destroyed while something is still playing.
         if (isPlaying()) {
-            Log.e(TAG, "Service being destroyed while still playing.");
+            Log.v(TAG, "Service being destroyed while still playing.");
         }
         // release all MediaPlayer resources, including the native player and wakelocks
         //Intent i = new Intent(AudioEffect.ACTION_CLOSE_AUDIO_EFFECT_CONTROL_SESSION);
@@ -478,7 +505,7 @@ public class VoiceRepeaterService extends Service {
         if (mPlayer.isInitialized()) {
             ed.putLong("seekpos", mPlayer.position());
         }
-        ed.putInt("repeatmode", mRepeatMode);
+        ed.putInt("loopmode", mLoopMode);
         
         //SharedPreferencesCompat.apply(ed);
         ed.commit();
@@ -582,11 +609,11 @@ public class VoiceRepeaterService extends Service {
                     + position() + "/" + duration()
                     + " (requested " + seekpos + ")");
             
-            int repmode = mPreferences.getInt("repeatmode", REPEAT_NONE);
-            if (repmode != REPEAT_ALL && repmode != REPEAT_CURRENT) {
-                repmode = REPEAT_NONE;
+            int repmode = mPreferences.getInt("loopmode", LOOP_NONE);
+            if (repmode != LOOP_ALL && repmode != LOOP_CURRENT) {
+                repmode = LOOP_NONE;
             }
-            mRepeatMode = repmode;
+            mLoopMode = repmode;
         }
     }
 	
@@ -616,12 +643,12 @@ public class VoiceRepeaterService extends Service {
             if (CMDNEXT.equals(cmd) || NEXT_ACTION.equals(action)) {
                 gotoNext(true);
             } else if (CMDPREVIOUS.equals(cmd) || PREVIOUS_ACTION.equals(action)) {
-                if (position() < 2000) {
+                //if (position() < 2000) {
                     prev();
-                } else {
-                    seek(0);
-                    play();
-                }
+                //} else {
+                //    seek(0);
+                //    play();
+                //}
             } else if (CMDTOGGLEPAUSE.equals(cmd) || TOGGLEPAUSE_ACTION.equals(action)) {
                 if (isPlaying()) {
                     pause();
@@ -641,9 +668,15 @@ public class VoiceRepeaterService extends Service {
                 //seek(0);
             } else if (CMDREWIND.equals(cmd)) {
                 int repcnt = intent.getIntExtra("repcnt", 1);
+                if (mVoiceRepeatMode != VOICEREPEAT_NONE) {
+                    resetVoiceRepeat();
+                }
                 scanBackward(repcnt);
             } else if (CMDFORWARD.equals(cmd)) {
                 int repcnt = intent.getIntExtra("repcnt", 1);
+                if (mVoiceRepeatMode != VOICEREPEAT_NONE) {
+                    resetVoiceRepeat();
+                }
                 scanForward(repcnt);
             }
         }
@@ -662,7 +695,7 @@ public class VoiceRepeaterService extends Service {
         // Take a snapshot of the current playlist
         saveQueue(true);
 
-        Log.e(TAG, ">>> onUnbind isplaying="+isPlaying());
+        Log.v(TAG, ">>> onUnbind isplaying="+isPlaying());
         
         if (isPlaying() || mPausedByTransientLossOfFocus) {
             // something is currently playing, or will be playing once 
@@ -679,7 +712,7 @@ public class VoiceRepeaterService extends Service {
             return true;
         }
         
-        Log.e(TAG, ">>> mPlayListLen="+mPlayListLen);
+        Log.v(TAG, ">>> mPlayListLen="+mPlayListLen);
         // No active playlist, OK to stop the service right now
         stopSelf(mServiceStartId);
         return true;
@@ -688,7 +721,7 @@ public class VoiceRepeaterService extends Service {
 	private Handler mDelayedStopHandler = new Handler() {
         @Override
         public void handleMessage(Message msg) {
-            Log.e(TAG, ">>> IDLE_DELAY isplaying="+isPlaying());
+            Log.v(TAG, ">>> IDLE_DELAY isplaying="+isPlaying());
             // Check again to make sure nothing is playing right now
             if (isPlaying() || mStatus!=null || mPausedByTransientLossOfFocus || mServiceInUse
                     || mMediaplayerHandler.hasMessages(TRACK_ENDED)) {
@@ -934,6 +967,10 @@ public class VoiceRepeaterService extends Service {
     
     private void openCurrentAndNext() {
         synchronized (this) {
+            if (mVoiceRepeatMode != VOICEREPEAT_NONE) {
+                resetVoiceRepeat();
+            }
+            
             if (mCursor != null) {
                 mCursor.close();
                 mCursor = null;
@@ -1056,7 +1093,7 @@ public class VoiceRepeaterService extends Service {
         if (mPlayer.isInitialized()) {
             // if we are at the end of the song, go to the next song first
             long duration = mPlayer.duration();
-            if (mRepeatMode != REPEAT_CURRENT && duration > 2000 &&
+            if (mLoopMode != LOOP_CURRENT && duration > 2000 &&
                 mPlayer.position() >= duration - 2000) {
                 gotoNext(true);
             }
@@ -1144,7 +1181,7 @@ public class VoiceRepeaterService extends Service {
     }
     
     private void stop(boolean remove_status_icon) {
-        Log.e(TAG, ">>> stop="+remove_status_icon);
+        Log.v(TAG, ">>> stop="+remove_status_icon);
         if (mPlayer.isInitialized()) {
             mPlayer.stop();
         }
@@ -1226,16 +1263,16 @@ public class VoiceRepeaterService extends Service {
      * assigned to mPlayPos;
      */
     private int getNextPosition(boolean force) {
-        if (mRepeatMode == REPEAT_CURRENT) {
+        if (mLoopMode == LOOP_CURRENT) {
             if (mPlayPos < 0) return 0;
             return mPlayPos;
         } else {
             if (mPlayPos >= mPlayListLen - 1) {
                 // we're at the end of the list
-                if (mRepeatMode == REPEAT_NONE && !force) {
+                if (mLoopMode == LOOP_NONE && !force) {
                     // all done
                     return -1;
-                } else if (mRepeatMode == REPEAT_ALL || force) {
+                } else if (mLoopMode == LOOP_ALL || force) {
                     return 0;
                 }
                 return -1;
@@ -1273,12 +1310,13 @@ public class VoiceRepeaterService extends Service {
     }
     
     private void gotoIdleState() {
-        Log.e(TAG, ">>> gotoIdleState()");
+        Log.v(TAG, ">>> gotoIdleState()");
         mStatus = null;
         mDelayedStopHandler.removeCallbacksAndMessages(null);
         Message msg = mDelayedStopHandler.obtainMessage();
         mDelayedStopHandler.sendMessageDelayed(msg, IDLE_DELAY);
         stopForeground(true);
+        resetVoiceRepeat();
     }
     
     /**
@@ -1363,14 +1401,106 @@ public class VoiceRepeaterService extends Service {
         return numremoved;
     }
     
-    public void setRepeatMode(int repeatmode) {
+    public void setLoopMode(int loopmode) {
         synchronized(this) {
-            mRepeatMode = repeatmode;
+            mLoopMode = loopmode;
             saveQueue(false);
         }
     }
-    public int getRepeatMode() {
-        return mRepeatMode;
+    public int getLoopMode() {
+        return mLoopMode;
+    }
+    
+    private final static int experienceSpacePre = 800; // ms
+    private final static int experienceSpaceEnd = 500; // ms
+    public void touchVoiceRepeat(long clickTime) {
+        synchronized(this) {
+            if (mVoiceRepeatMode == VOICEREPEAT_NONE) {
+                mVoiceRepeatStartTime = position();
+                
+                // cut the time space to enhance the experience
+                long timeSpace = System.currentTimeMillis() - clickTime;
+                mVoiceRepeatStartTime -= (timeSpace + experienceSpacePre);
+                
+                mVoiceRepeatStartTime = mVoiceRepeatStartTime>0 ? mVoiceRepeatStartTime : 0;
+                
+                
+                mVoiceRepeatMode = VOICEREPEAT_TAG_START_TIME;
+            } else if (mVoiceRepeatMode == VOICEREPEAT_TAG_START_TIME) {
+                long pos = position();
+                long interval = position() - mVoiceRepeatStartTime;
+                
+                // cut the time space to enhance the experience
+                long timeSpace = System.currentTimeMillis() - clickTime;
+                interval -= (timeSpace + experienceSpaceEnd);
+                
+                Log.v(TAG, ">>> Interval="+interval);
+                
+                if (interval > 500) {
+                    mVoiceRepeatMode = VOICEREPEAT_PLAYING;
+                    mVoiceRepeatEndTime = mVoiceRepeatStartTime + interval;
+                    activeVoiceRepeat();
+                } else {
+                    // else ignore this request, wait for a later one
+                    Log.v(TAG, ">>> Interval is tiny, ignore ...");
+                }
+            } else {
+                resetVoiceRepeat();
+            }
+            
+            notifyChange(REFRESH);
+        }
+    }
+    
+    private void resetVoiceRepeat() {
+        synchronized(this) {
+            mMediaplayerHandler.removeMessages(VOICE_REPEAT_TIMER);
+            mVoiceRepeatMode = VOICEREPEAT_NONE;
+            mVoiceRepeatStartTime = 0;
+            mVoiceRepeatEndTime = 0;
+            
+            notifyChange(REFRESH);
+        }
+    }
+    
+    private void activeVoiceRepeat() {
+        // check the start & end time
+        if (mVoiceRepeatEndTime <= mVoiceRepeatStartTime) {
+            resetVoiceRepeat();
+            return;
+        }
+        // launch a timer to repeat
+        
+        // ;
+        seek(mVoiceRepeatStartTime);
+        if (!isPlaying()) play();
+        
+        QueryVoiceRepeatTimer();
+    }
+    
+    
+    private void QueryVoiceRepeatTimer() {
+        if (mVoiceRepeatMode != VOICEREPEAT_PLAYING) {
+            Log.e(TAG, ">>> postVoiceRepeatTimer() repeatMode="+mVoiceRepeatMode);
+            return;
+        }
+        
+        // check repeat is or not finished, and launch the other one
+        long delay = 50;
+        long pos = position();
+        if (pos >= mVoiceRepeatEndTime) {
+            seek(mVoiceRepeatStartTime);
+        } else {
+            delay = (mVoiceRepeatEndTime-pos)>1000 ? 1000 : (mVoiceRepeatEndTime-pos);
+        }
+        
+        Message msg = mMediaplayerHandler.obtainMessage(VOICE_REPEAT_TIMER);
+        mMediaplayerHandler.removeMessages(VOICE_REPEAT_TIMER);
+        mMediaplayerHandler.sendMessageDelayed(msg, delay);
+    }
+    
+    public int getVoiceRepeatMode() {
+        return mVoiceRepeatMode;
     }
 
     public int getMediaMountedCount() {
@@ -1583,7 +1713,6 @@ public class VoiceRepeaterService extends Service {
         }
 
         public void stop() {
-            Log.e(TAG, ">>> player-stop()");
             mMediaPlayer.reset();
             mIsInitialized = false;
         }
@@ -1592,13 +1721,11 @@ public class VoiceRepeaterService extends Service {
          * You CANNOT use this player anymore after calling release()
          */
         public void release() {
-            Log.e(TAG, ">>> player-release()");
             stop();
             mMediaPlayer.release();
         }
         
         public void pause() {
-            Log.e(TAG, ">>> pause()");
             mMediaPlayer.pause();
         }
         
@@ -1711,9 +1838,15 @@ public class VoiceRepeaterService extends Service {
             mService.get().gotoNext(true);
         }
         public void rewind() {
+            if (mService.get().mVoiceRepeatMode != VOICEREPEAT_NONE) {
+                mService.get().resetVoiceRepeat();
+            }
             mService.get().scanBackward(1);
         }
         public void forward() {
+            if (mService.get().mVoiceRepeatMode != VOICEREPEAT_NONE) {
+                mService.get().resetVoiceRepeat();
+            }
             mService.get().scanForward(1);
         }
         public String getTrackName() {
@@ -1744,6 +1877,9 @@ public class VoiceRepeaterService extends Service {
             return mService.get().duration();
         }
         public long seek(long pos) {
+            if (mService.get().mVoiceRepeatMode != VOICEREPEAT_NONE) {
+                mService.get().resetVoiceRepeat();
+            }
             return mService.get().seek(pos);
         }
         public int removeTracks(int first, int last) {
@@ -1752,17 +1888,23 @@ public class VoiceRepeaterService extends Service {
         public int removeTrack(long id) {
             return mService.get().removeTrack(id);
         }
-        public void setRepeatMode(int repeatmode) {
-            mService.get().setRepeatMode(repeatmode);
+        public void setLoopMode(int loopmode) {
+            mService.get().setLoopMode(loopmode);
         }
-        public int getRepeatMode() {
-            return mService.get().getRepeatMode();
+        public int getLoopMode() {
+            return mService.get().getLoopMode();
         }
         public int getMediaMountedCount() {
             return mService.get().getMediaMountedCount();
         }
         public int getAudioSessionId() {
             return mService.get().getAudioSessionId();
+        }
+        public void touchVoiceRepeat(long clickTime){
+            mService.get().touchVoiceRepeat(clickTime);
+        }
+        public int getVoiceRepeatMode(){
+            return mService.get().getVoiceRepeatMode();
         }
     }
     private final IBinder mBinder = new ServiceStub(this);
