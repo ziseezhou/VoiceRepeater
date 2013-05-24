@@ -252,9 +252,10 @@
 	    </LinearLayout>
     </LinearLayout>
     <ZoomControls
-        android1:id="@+id/zoomControls"
+        android:id="@+id/zoomControls"
         android:layout_alignParentRight="true"
         android:layout_marginTop="43dp"
-        android1:layout_width="wrap_content"
-        android1:layout_height="wrap_content" />
+        android:layout_marginRight="8dp"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content" />
 </RelativeLayout>

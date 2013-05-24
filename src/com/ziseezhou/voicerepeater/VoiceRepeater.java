@@ -54,6 +54,8 @@ import android.view.ViewGroup;
 import android.view.Window;
 import android.view.View.OnClickListener;
 import android.view.WindowManager;
+import android.view.animation.Animation;
+import android.view.animation.AnimationUtils;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.EditText;
@@ -70,7 +72,7 @@ import android.widget.ZoomControls;
 
 import com.ziseezhou.lyrics.LyricsFileEncodingSampleDet;
 
-public class VoiceRepeater extends ListActivity {
+public class VoiceRepeater extends ListActivity implements Animation.AnimationListener {
 	private static final String TAG = "VoiceRepeater";
 	private static final String PREF_KEY_FOLDERSTRING = "pref_folder_key";
 	private static final String PREF_KEY_FONTLEVEL = "pref_font_level";
@@ -78,6 +80,9 @@ public class VoiceRepeater extends ListActivity {
 	private static final int FONT_MIN_LEVEL = 0;
 	private static final int FONT_MAX_LEVEL = 10;
 	private static final int FONT_BASE_VALUE = 12; // sp
+	private static final int MSG_UPDATE_UI = 0;
+    private static final int MSG_UPDATE_TIMER = 1;
+    private static final int REFRESH = 2;
 	private ImageButton mFilter;
 	private ImageButton mCollapser;
 	private ImageButton mMediaPrevious;
@@ -113,15 +118,17 @@ public class VoiceRepeater extends ListActivity {
 	private long mPosOverride = -1;
 	private boolean mFromTouch = false;
 	private AudioTextInfo mAudioTextInfo = new AudioTextInfo();
-	//private boolean mShowText = false;
-	//private boolean mAudioTextQueried = false;
-	//private boolean mAudioTextAvailable = false;
-	//private String mAudioText;
 	private boolean mToolsVisible = false;
+	private Animation mHideAnimation;
 	
-	private static final int MSG_UPDATE_UI = 0;
-    private static final int MSG_UPDATE_TIMER = 1;
-    private static final int REFRESH = 2;
+    //private Handler mHandler = new Handler();
+    private Runnable mStartHidingRunnable = new Runnable() {
+            @Override
+        public void run() {
+            startHiding();
+        }
+    };
+
     
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -180,6 +187,10 @@ public class VoiceRepeater extends ListActivity {
         
         mTextView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, FONT_BASE_VALUE+mZoomFontValue);
         zoomControlsVerify();
+        hideZoomBar();
+        
+        mHideAnimation = AnimationUtils.loadAnimation(this, R.anim.hide_out);
+        mHideAnimation.setAnimationListener(this);
 
         // initialize to disabled
         mCollapser.setEnabled(false);
@@ -831,41 +842,41 @@ public class VoiceRepeater extends ListActivity {
         }
     };
     
-    private OnClickListener mZoomInListener = new OnClickListener() {
+    private OnClickListener mZoomOutListener = new OnClickListener() {
         public void onClick(android.view.View v) {
-            Log.v(TAG, ">>> here in");
             if (mZoomFontValue <= FONT_MIN_LEVEL) return;
             
             --mZoomFontValue;
             Utils.setIntPref(VoiceRepeater.this, PREF_KEY_FONTLEVEL, mZoomFontValue);
             mTextView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, FONT_BASE_VALUE+mZoomFontValue);
             zoomControlsVerify();
+            showZoomBar();
         }
     };
     
-    private OnClickListener mZoomOutListener = new OnClickListener() {
+    private OnClickListener mZoomInListener = new OnClickListener() {
         public void onClick(android.view.View v) {
-            Log.v(TAG, ">>> here ou");
             if (mZoomFontValue >= FONT_MAX_LEVEL) return;
             
             ++mZoomFontValue;
             Utils.setIntPref(VoiceRepeater.this, PREF_KEY_FONTLEVEL, mZoomFontValue);
             mTextView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, FONT_BASE_VALUE+mZoomFontValue);
             zoomControlsVerify();
+            showZoomBar();
         }
     };
     
     private void zoomControlsVerify() {
         if (mZoomFontValue <= FONT_MIN_LEVEL) {
-            mZoomControl.setIsZoomInEnabled(false);
+            mZoomControl.setIsZoomOutEnabled(false);
         } else{
-            mZoomControl.setIsZoomInEnabled(true);
+            mZoomControl.setIsZoomOutEnabled(true);
         } 
         
         if(mZoomFontValue >= FONT_MAX_LEVEL) {
-            mZoomControl.setIsZoomOutEnabled(false);
+            mZoomControl.setIsZoomInEnabled(false);
         } else {
-            mZoomControl.setIsZoomOutEnabled(true);
+            mZoomControl.setIsZoomInEnabled(true);
         }
     }
     
@@ -1082,16 +1093,19 @@ public class VoiceRepeater extends ListActivity {
             
             View textViewContainer = findViewById(R.id.textViewContainer);
             if (mAudioTextInfo.mShowText) {
-                mTrackList.setVisibility(View.GONE);
                 setAudioText();
                 if (mAudioTextInfo.mAudioTextAvailable) {
                     getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
                 }
-                textViewContainer.setVisibility(View.VISIBLE);
-                mZoomControl.show();
+                
+                if (View.VISIBLE!=textViewContainer.getVisibility()) {
+                    mTrackList.setVisibility(View.GONE);
+                    textViewContainer.setVisibility(View.VISIBLE);
+                    showZoomBar();
+                }
             } else {
                 mTrackList.setVisibility(View.VISIBLE);
-                mZoomControl.hide();
+                hideZoomBar();
                 textViewContainer.setVisibility(View.GONE);
                 getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
             }
@@ -1107,12 +1121,56 @@ public class VoiceRepeater extends ListActivity {
             
             mTrackList.setVisibility(View.VISIBLE);
             findViewById(R.id.textViewContainer).setVisibility(View.GONE);
-            mZoomControl.hide();
+            hideZoomBar();
             getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
             
             mToolsVisible = false;
             mAudioTextInfo.mShowText = false;
         }
+    }
+    
+    private void showZoomBar() {
+        mZoomControl.setVisibility(View.VISIBLE);
+        maybeStartHiding();
+    }
+    
+    private void hideZoomBar() {
+        mZoomControl.setVisibility(View.GONE);
+    }
+    
+    private void maybeStartHiding() {
+        cancelHiding();
+        mHandler.postDelayed(mStartHidingRunnable, 1000);
+    }
+    
+    private void startHiding() {
+        startHideAnimation(mZoomControl);
+    }
+    
+    private void startHideAnimation(View view) {
+        if (view.getVisibility() == View.VISIBLE) {
+            view.startAnimation(mHideAnimation);
+        }
+    }
+
+    private void cancelHiding() {
+        mHandler.removeCallbacks(mStartHidingRunnable);
+        mZoomControl.setAnimation(null);
+    }
+    
+    @Override
+    public void onAnimationStart(Animation animation) {
+        // Do nothing.
+    }
+
+    @Override
+    public void onAnimationRepeat(Animation animation) {
+        // Do nothing.
+    }
+
+    @Override
+    public void onAnimationEnd(Animation animation) {
+        hideZoomBar();
     }
     
     private void queueNextRefresh(long delay) {
