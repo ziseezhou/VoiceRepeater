@@ -27,6 +27,8 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Message;
+import android.os.Parcel;
+import android.os.Parcelable;
 import android.os.RemoteException;
 import android.provider.MediaStore;
 import android.app.ListActivity;
@@ -43,12 +45,15 @@ import android.database.Cursor;
 import android.support.v4.widget.SimpleCursorAdapter;
 import android.text.TextUtils;
 import android.util.Log;
+import android.util.SparseBooleanArray;
+import android.util.TypedValue;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
 import android.view.View.OnClickListener;
+import android.view.WindowManager;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.EditText;
@@ -61,11 +66,18 @@ import android.widget.SeekBar;
 import android.widget.SeekBar.OnSeekBarChangeListener;
 import android.widget.TextView;
 import android.widget.Toast;
+import android.widget.ZoomControls;
+
 import com.ziseezhou.lyrics.LyricsFileEncodingSampleDet;
 
 public class VoiceRepeater extends ListActivity {
 	private static final String TAG = "VoiceRepeater";
 	private static final String PREF_KEY_FOLDERSTRING = "pref_folder_key";
+	private static final String PREF_KEY_FONTLEVEL = "pref_font_level";
+	private static final int FONT_DEFAULT_LEVEL = 2;
+	private static final int FONT_MIN_LEVEL = 0;
+	private static final int FONT_MAX_LEVEL = 10;
+	private static final int FONT_BASE_VALUE = 12; // sp
 	private ImageButton mFilter;
 	private ImageButton mCollapser;
 	private ImageButton mMediaPrevious;
@@ -76,6 +88,9 @@ public class VoiceRepeater extends ListActivity {
 	private ImageButton mMediaText;
 	private ImageButton mMediaForward;
 	private ImageButton mMediaRepeater;
+	private ZoomControls mZoomControl;
+	private TextView mTextView;
+	private int mZoomFontValue = FONT_DEFAULT_LEVEL;
 	private ListView mTrackList;
 	private Cursor mTrackCursor;
 	private TrackListAdapter mAdapter;
@@ -97,9 +112,12 @@ public class VoiceRepeater extends ListActivity {
 	private long mLastSeekEventTime;
 	private long mPosOverride = -1;
 	private boolean mFromTouch = false;
-	private boolean mShowText = false;
+	private AudioTextInfo mAudioTextInfo = new AudioTextInfo();
+	//private boolean mShowText = false;
+	//private boolean mAudioTextQueried = false;
+	//private boolean mAudioTextAvailable = false;
+	//private String mAudioText;
 	private boolean mToolsVisible = false;
-	private String mAudioText;
 	
 	private static final int MSG_UPDATE_UI = 0;
     private static final int MSG_UPDATE_TIMER = 1;
@@ -113,7 +131,8 @@ public class VoiceRepeater extends ListActivity {
         
         if (savedInstanceState != null) {
             mToolsVisible = savedInstanceState.getBoolean("toolsvisible", false);
-            mShowText = savedInstanceState.getBoolean("showtext", false);
+            mAudioTextInfo = savedInstanceState.getParcelable("textinfo");
+            if (mAudioTextInfo == null) mAudioTextInfo = new AudioTextInfo();
         } 
         
         setContentView(R.layout.main);
@@ -129,6 +148,7 @@ public class VoiceRepeater extends ListActivity {
         };
         
         mFilterFolderString = Utils.getStringPref(this, PREF_KEY_FOLDERSTRING, "");
+        mZoomFontValue = Utils.getIntPref(this, PREF_KEY_FONTLEVEL, FONT_DEFAULT_LEVEL);
         
         mFilter = (ImageButton) findViewById(R.id.filter);
         mCollapser = (ImageButton) findViewById(R.id.collapse);
@@ -152,7 +172,14 @@ public class VoiceRepeater extends ListActivity {
         mMediaForward.setOnClickListener(mMediaForwardListener);
         mMediaRepeater = (ImageButton) findViewById(R.id.media_repeater);
         mMediaRepeater.setOnClickListener(mMediaRepeaterListener);
+        mZoomControl = (ZoomControls) findViewById(R.id.zoomControls);
+        mZoomControl.setOnZoomInClickListener(mZoomInListener);
+        mZoomControl.setOnZoomOutClickListener(mZoomOutListener);
+        mTextView = (TextView)findViewById(R.id.textView);
         findViewById(R.id.timeContainer).setOnClickListener(mClickTimeBox);
+        
+        mTextView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, FONT_BASE_VALUE+mZoomFontValue);
+        zoomControlsVerify();
 
         // initialize to disabled
         mCollapser.setEnabled(false);
@@ -262,7 +289,7 @@ public class VoiceRepeater extends ListActivity {
     @Override
     protected void onSaveInstanceState(Bundle outState) {
         outState.putBoolean("toolsvisible", mToolsVisible);
-        outState.putBoolean("showtext", mShowText);
+        outState.putParcelable("textinfo", mAudioTextInfo);
         super.onSaveInstanceState(outState);
     }
     
@@ -722,9 +749,10 @@ public class VoiceRepeater extends ListActivity {
         public void onClick(android.view.View v) {
             boolean isListVisible = mTrackList.getVisibility() == View.VISIBLE;
             if (isListVisible) {
-                mShowText = true;
+                setAudioText();
+                mAudioTextInfo.mShowText = true;
             } else {
-                mShowText = false;
+                mAudioTextInfo.mShowText = false;
             }
             
             postUpdateUI();
@@ -802,6 +830,44 @@ public class VoiceRepeater extends ListActivity {
             }
         }
     };
+    
+    private OnClickListener mZoomInListener = new OnClickListener() {
+        public void onClick(android.view.View v) {
+            Log.v(TAG, ">>> here in");
+            if (mZoomFontValue <= FONT_MIN_LEVEL) return;
+            
+            --mZoomFontValue;
+            Utils.setIntPref(VoiceRepeater.this, PREF_KEY_FONTLEVEL, mZoomFontValue);
+            mTextView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, FONT_BASE_VALUE+mZoomFontValue);
+            zoomControlsVerify();
+        }
+    };
+    
+    private OnClickListener mZoomOutListener = new OnClickListener() {
+        public void onClick(android.view.View v) {
+            Log.v(TAG, ">>> here ou");
+            if (mZoomFontValue >= FONT_MAX_LEVEL) return;
+            
+            ++mZoomFontValue;
+            Utils.setIntPref(VoiceRepeater.this, PREF_KEY_FONTLEVEL, mZoomFontValue);
+            mTextView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, FONT_BASE_VALUE+mZoomFontValue);
+            zoomControlsVerify();
+        }
+    };
+    
+    private void zoomControlsVerify() {
+        if (mZoomFontValue <= FONT_MIN_LEVEL) {
+            mZoomControl.setIsZoomInEnabled(false);
+        } else{
+            mZoomControl.setIsZoomInEnabled(true);
+        } 
+        
+        if(mZoomFontValue >= FONT_MAX_LEVEL) {
+            mZoomControl.setIsZoomOutEnabled(false);
+        } else {
+            mZoomControl.setIsZoomOutEnabled(true);
+        }
+    }
     
     private void updateUI() {
 		String strFilterString;
@@ -920,24 +986,42 @@ public class VoiceRepeater extends ListActivity {
     }
     
     private void setAudioText() {
-        TextView textView = (TextView)findViewById(R.id.textView);
-        
-        if (mAudioText!=null && mAudioText.length()>0){
-            textView.setText(mAudioText);
-            return;
-        }
-        
-        // load the audio text
-        String audioPath=null, textPath;
-        StringBuilder text = new StringBuilder();
+        String audioPath = null;
         
         try {
             audioPath = mService.getTrackFilePath();
+            if (null == audioPath) audioPath = ""; // avoid null exception
         } catch (RemoteException ex) { ex.printStackTrace(); }
+        
+        Log.v(TAG, ">>> setAudioText(), s.path="+audioPath+
+                ", path="+mAudioTextInfo.mAudioPath+
+                ", qurd="+mAudioTextInfo.mAudioTextQueried+
+                ", avai="+mAudioTextInfo.mAudioTextAvailable);
+        
+        if (audioPath.equals(mAudioTextInfo.mAudioPath) && 
+            mAudioTextInfo.mAudioTextQueried) {
+            if (mAudioTextInfo.mAudioTextAvailable) {
+                mTextView.setText(mAudioTextInfo.mAudioText);
+            } else {
+                mTextView.setText(R.string.no_text_file);
+            }
+            
+            return;
+        }
+        
+        mAudioTextInfo.mAudioPath = audioPath;
+        mAudioTextInfo.mAudioTextQueried = true;
+        
+        // load the audio text
+        String textPath;
+        StringBuilder text = new StringBuilder();
+        
+        
         
         textPath = searchTextFile(audioPath);
         if (textPath == null) {
-            textView.setText(R.string.no_text_file);
+            mTextView.setText(R.string.no_text_file);
+            mAudioTextInfo.mAudioTextAvailable = false;
             return;
         }
         
@@ -959,19 +1043,25 @@ public class VoiceRepeater extends ListActivity {
             }
         } catch (Exception e){
             e.printStackTrace();
-            return;
+            mTextView.setText(R.string.no_text_file);
+            mAudioTextInfo.mAudioTextAvailable = false;
+            return ;
         }finally {
             ;
         }
         
-        mAudioText = text.toString();
-        if (mAudioText==null || mAudioText.length()<=0){
-            textView.setText(R.string.no_text_file);
-            return;
+        mAudioTextInfo.mAudioText = text.toString();
+        if (mAudioTextInfo.mAudioText==null || mAudioTextInfo.mAudioText.length()<=0){
+            mTextView.setText(R.string.no_text_file);
+            mAudioTextInfo.mAudioTextAvailable = false;
+            return ;
         }
         
-        textView.setText(mAudioText);
+        mTextView.setText(mAudioTextInfo.mAudioText);
         ((ScrollView)findViewById(R.id.textViewContainer)).scrollTo(0, 0);
+        
+        mAudioTextInfo.mAudioTextAvailable = true;
+        return ;
     }
     
     private void enableTools(boolean enable){
@@ -989,20 +1079,21 @@ public class VoiceRepeater extends ListActivity {
                 mCollapser.setImageResource(R.drawable.tools_show);
             }
             
-            if (mShowText) {
-                ;
-            } else {
-                ;
-            }
             
             View textViewContainer = findViewById(R.id.textViewContainer);
-            if (mShowText) {
+            if (mAudioTextInfo.mShowText) {
                 mTrackList.setVisibility(View.GONE);
                 setAudioText();
+                if (mAudioTextInfo.mAudioTextAvailable) {
+                    getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+                }
                 textViewContainer.setVisibility(View.VISIBLE);
+                mZoomControl.show();
             } else {
                 mTrackList.setVisibility(View.VISIBLE);
+                mZoomControl.hide();
                 textViewContainer.setVisibility(View.GONE);
+                getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
             }
             
         } else {
@@ -1016,9 +1107,11 @@ public class VoiceRepeater extends ListActivity {
             
             mTrackList.setVisibility(View.VISIBLE);
             findViewById(R.id.textViewContainer).setVisibility(View.GONE);
+            mZoomControl.hide();
+            getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
             
             mToolsVisible = false;
-            mShowText = false;
+            mAudioTextInfo.mShowText = false;
         }
     }
     
@@ -1075,8 +1168,11 @@ public class VoiceRepeater extends ListActivity {
                 //return;
             }
             
+            if (!path.equals(mAudioTextInfo.mAudioPath)) {
+                mAudioTextInfo.mAudioTextQueried = false;
+            }
+            
             ((TextView)findViewById(R.id.trackInfo)).setText(path);
-            mAudioText = null;
             mDuration = mService.duration();
             refreshNow();
             mTotalTime.setText(Utils.makeTimeString(this, mDuration / 1000));
@@ -1381,4 +1477,53 @@ public class VoiceRepeater extends ListActivity {
         }
     }
 
+}
+
+
+class AudioTextInfo implements Parcelable{
+    public String  mAudioPath = null;
+    public String  mAudioText = null;
+    public boolean mShowText = false;
+    public boolean mAudioTextQueried = false;
+    public boolean mAudioTextAvailable = false;
+    
+    public AudioTextInfo(){}
+    
+    public AudioTextInfo(Parcel src) {
+        mAudioPath = src.readString();
+        mAudioText = src.readString();
+        SparseBooleanArray arry = src.readSparseBooleanArray();
+        mShowText = arry.get(0);
+        mAudioTextQueried = arry.get(1);
+        mAudioTextAvailable = arry.get(2);
+    }
+    
+    @Override
+    public int describeContents() {
+        return 0;
+    }
+    @Override
+    public void writeToParcel(Parcel dest, int flags) {
+        dest.writeString(mAudioPath);
+        dest.writeString(mAudioText);
+        dest.writeBooleanArray(new boolean[]{
+                mShowText,
+                mAudioTextQueried,
+                mAudioTextAvailable
+        });
+    }
+    
+    public static final Parcelable.Creator<AudioTextInfo> CREATOR = new Parcelable.Creator<AudioTextInfo>() {
+
+        @Override
+        public AudioTextInfo createFromParcel(Parcel source) {
+            return new AudioTextInfo(source);
+        }
+
+        @Override
+        public AudioTextInfo[] newArray(int size) {
+            return new AudioTextInfo[size];
+        }
+    };
+    
 }

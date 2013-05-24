@@ -16,7 +16,7 @@
 	<string name="folderPre">Directory: </string>
 	<string name="listIsNull">List is none</string>
 	<string name="playlist_changed">Playlist has been changed.</string>
-	<string name="no_text_file">No text file for current audio.\nThe text file is requested to be the same title with current audio, and with extension name txt or lrc. (e.g. sample.mp3 - sample.txt)</string>
+	<string name="no_text_file">No text file for current audio.\nThe text file is requested to be the same title with current audio, and with extension name txt or lrc. (e.g. sample.mp3 - sample.txt)\nThe file is max to 10K.</string>
 	<string name="lyrics_load">Loading text file ... </string>
 	<string name="lyrics_file_err">Text file format error or too big (must be less than 10K)</string>
 	
