@@ -90,11 +90,19 @@ public class MediaButtonIntentReceiver extends BroadcastReceiver {
     @Override
     public void onReceive(Context context, Intent intent) {
         String intentAction = intent.getAction();
-        Log.v(TAG, "intentAction="+intentAction);
+        Log.v(TAG, ">>> intentAction="+intentAction);
         if (AudioManager.ACTION_AUDIO_BECOMING_NOISY.equals(intentAction)) {
             Intent i = new Intent(context, VoiceRepeaterService.class);
             i.setAction(VoiceRepeaterService.SERVICECMD);
             i.putExtra(VoiceRepeaterService.CMDNAME, VoiceRepeaterService.CMDPAUSE);
+            context.startService(i);
+        } else if ("android.media.VOLUME_CHANGED_ACTION".equals(intentAction)) {
+            Intent i = new Intent(context, VoiceRepeaterService.class);
+            i.setAction(VoiceRepeaterService.SERVICECMD);
+            i.putExtra(VoiceRepeaterService.CMDNAME, VoiceRepeaterService.CMDTOGGLEVOLUME);
+            i.putExtra("v_type", intent.getExtras().getInt("android.media.EXTRA_VOLUME_STREAM_TYPE"));
+            i.putExtra("v_value", intent.getExtras().getInt("android.media.EXTRA_VOLUME_STREAM_VALUE"));
+            i.putExtra("v_value_old", intent.getExtras().getInt("android.media.EXTRA_PREV_VOLUME_STREAM_VALUE"));
             context.startService(i);
         } else if (Intent.ACTION_MEDIA_BUTTON.equals(intentAction)) {
             KeyEvent event = (KeyEvent)
@@ -141,7 +149,15 @@ public class MediaButtonIntentReceiver extends BroadcastReceiver {
                     break;
                 case KeyEvent.KEYCODE_MEDIA_FAST_FORWARD:
                     command = VoiceRepeaterService.CMDFORWARD;
+                
+                // unfortunately, bellows do not work
+                /*
+                case KeyEvent.KEYCODE_VOLUME_UP:
+                    command = VoiceRepeaterService.CMDREWIND;
+                case KeyEvent.KEYCODE_VOLUME_DOWN:
+                    command = VoiceRepeaterService.CMDTOGGLEREPEAT;
                     break;
+                */
             }
 
             if (command != null) {
@@ -271,6 +287,7 @@ public class MediaButtonIntentReceiver extends BroadcastReceiver {
                     mHandler.removeMessages(MSG_LONGPRESS_TIMEOUT);
                     mDown = false;
                 }
+                
                 if (isOrderedBroadcast()) {
                     abortBroadcast();
                 }

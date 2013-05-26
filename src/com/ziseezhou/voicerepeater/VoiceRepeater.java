@@ -47,6 +47,7 @@ import android.text.TextUtils;
 import android.util.Log;
 import android.util.SparseBooleanArray;
 import android.util.TypedValue;
+import android.view.KeyEvent;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
@@ -414,6 +415,34 @@ public class VoiceRepeater extends ListActivity implements Animation.AnimationLi
         unregisterReceiverSafe(mScanListener);
     	super.onDestroy();
     }
+    
+    // volume events are not available after screen off :(
+    /*
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent event) {
+        int action = event.getAction();
+        int keyCode = event.getKeyCode();
+        
+        switch (keyCode) {
+        case KeyEvent.KEYCODE_VOLUME_UP: {
+            try {
+                if (mService!= null && mService.position()!=-1) {
+                    Log.v(TAG, ">>> volume up");
+                    return true;
+                }
+            }catch (RemoteException e) {e.printStackTrace();}
+        }
+        case KeyEvent.KEYCODE_VOLUME_DOWN: {
+            try {
+                if (mService!= null && mService.position()!=-1) {
+                    Log.v(TAG, ">>> volume dn");
+                    return true;
+                }
+            }catch (RemoteException e) {e.printStackTrace();}
+        }
+        }
+        return super.dispatchKeyEvent(event);
+    }*/
     
     @Override
     protected void onListItemClick(ListView l, View v, int position, long id)

@@ -72,6 +72,8 @@ public class VoiceRepeaterService extends Service {
     public static final String CMDNEXT = "next";
     public static final String CMDREWIND = "rewind";
     public static final String CMDFORWARD = "forward";
+    public static final String CMDTOGGLEREPEAT = "togglerepeat";
+    public static final String CMDTOGGLEVOLUME = "togglevolume";
     
     public static final String TOGGLEPAUSE_ACTION = "com.ziseezhou.voicerepeater.servicecommand.togglepause";
     public static final String PAUSE_ACTION = "com.ziseezhou.voicerepeater.servicecommand.pause";
@@ -122,6 +124,7 @@ public class VoiceRepeaterService extends Service {
     private int mServiceStartId = -1;
     private String mFileToPlay;
     private Notification mStatus;
+    private int mVolumeBaseForHook = 0;
     
     String[] mCursorCols = new String[] {
             "audio._id AS _id",             // index must match IDCOLIDX below
@@ -365,6 +368,10 @@ public class VoiceRepeaterService extends Service {
                     resetVoiceRepeat();
                 }
                 scanForward(repcnt);
+            } else if (CMDTOGGLEREPEAT.equals(cmd)){
+                touchVoiceRepeat(System.currentTimeMillis());
+            } else if (CMDTOGGLEVOLUME.equals(cmd)){
+                toggleVolume(intent);
             }
         }
     };
@@ -678,6 +685,10 @@ public class VoiceRepeaterService extends Service {
                     resetVoiceRepeat();
                 }
                 scanForward(repcnt);
+            } else if (CMDTOGGLEREPEAT.equals(cmd)){
+                touchVoiceRepeat(System.currentTimeMillis());
+            } else if (CMDTOGGLEVOLUME.equals(cmd)){
+                toggleVolume(intent);
             }
         }
         
@@ -1089,6 +1100,8 @@ public class VoiceRepeaterService extends Service {
                 AudioManager.AUDIOFOCUS_GAIN);
         mAudioManager.registerMediaButtonEventReceiver(new ComponentName(this.getPackageName(),
                 MediaButtonIntentReceiver.class.getName()));
+        
+        mVolumeBaseForHook = mAudioManager.getStreamVolume(AudioManager.STREAM_MUSIC);
 
         if (mPlayer.isInitialized()) {
             // if we are at the end of the song, go to the next song first
@@ -1415,6 +1428,10 @@ public class VoiceRepeaterService extends Service {
     private final static int experienceSpaceEnd = 500; // ms
     public void touchVoiceRepeat(long clickTime) {
         synchronized(this) {
+            if (!mPlayer.isInitialized()) {
+                return;
+            }
+            
             if (mVoiceRepeatMode == VOICEREPEAT_NONE) {
                 mVoiceRepeatStartTime = position();
                 
@@ -1427,7 +1444,6 @@ public class VoiceRepeaterService extends Service {
                 
                 mVoiceRepeatMode = VOICEREPEAT_TAG_START_TIME;
             } else if (mVoiceRepeatMode == VOICEREPEAT_TAG_START_TIME) {
-                long pos = position();
                 long interval = position() - mVoiceRepeatStartTime;
                 
                 // cut the time space to enhance the experience
@@ -1450,6 +1466,36 @@ public class VoiceRepeaterService extends Service {
             
             notifyChange(REFRESH);
         }
+    }
+    
+    private void toggleVolume(Intent intent) {
+        int type, value, valueOld;
+        type = intent.getIntExtra("v_type", -1);
+        value = intent.getIntExtra("v_value", -1);
+        valueOld = intent.getIntExtra("v_value_old", -1);
+        
+        //Log.v(TAG, ">>> volume changed, (type="+type+", value="+value+", oldvalue="+valueOld+", base="+mVolumeBaseForHook+")");
+        
+        if (type==AudioManager.STREAM_MUSIC && isPlaying() &&
+                value!= valueOld && value!=mVolumeBaseForHook) {
+            
+            if (value > valueOld) {
+                // volume up
+                scanBackward(1);
+                
+                // restore the value
+                mAudioManager.setStreamVolume(AudioManager.STREAM_MUSIC, mVolumeBaseForHook, 0);
+            } else {
+                // volume down
+                touchVoiceRepeat(System.currentTimeMillis());
+                
+                // restore the value
+                mAudioManager.setStreamVolume(AudioManager.STREAM_MUSIC, mVolumeBaseForHook, 0);
+            }
+            
+        }
+        
+        return;
     }
     
     private void resetVoiceRepeat() {
