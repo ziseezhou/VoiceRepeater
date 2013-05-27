@@ -98,6 +98,10 @@ public class VoiceRepeaterService extends Service {
     public static final int VOICEREPEAT_TAG_START_TIME = 1;
     public static final int VOICEREPEAT_PLAYING = 2;
     
+    public static final int VOL_ACTION_NONE = 0;
+    public static final int VOL_ACTION_UP = 1;
+    public static final int VOL_ACTION_DN = 2;
+    
     private WakeLock mWakeLock;
 	private boolean mServiceInUse = false;
     private boolean mPausedByTransientLossOfFocus = false; // used to track what type of audio focus loss caused the playback to pause
@@ -125,6 +129,7 @@ public class VoiceRepeaterService extends Service {
     private String mFileToPlay;
     private Notification mStatus;
     private int mVolumeBaseForHook = 0;
+    private boolean mVolumeUpSwitch = true;
     
     String[] mCursorCols = new String[] {
             "audio._id AS _id",             // index must match IDCOLIDX below
@@ -1469,6 +1474,7 @@ public class VoiceRepeaterService extends Service {
     }
     
     private void toggleVolume(Intent intent) {
+        int volAction = VOL_ACTION_NONE;
         int type, value, valueOld;
         type = intent.getIntExtra("v_type", -1);
         value = intent.getIntExtra("v_value", -1);
@@ -1480,19 +1486,29 @@ public class VoiceRepeaterService extends Service {
                 value!= valueOld && value!=mVolumeBaseForHook) {
             
             if (value > valueOld) {
-                // volume up
-                scanBackward(1);
-                
-                // restore the value
-                mAudioManager.setStreamVolume(AudioManager.STREAM_MUSIC, mVolumeBaseForHook, 0);
+                volAction = VOL_ACTION_UP;
             } else {
-                // volume down
-                touchVoiceRepeat(System.currentTimeMillis());
-                
-                // restore the value
-                mAudioManager.setStreamVolume(AudioManager.STREAM_MUSIC, mVolumeBaseForHook, 0);
+                volAction = VOL_ACTION_DN;
             }
             
+            // restore the volume
+            mAudioManager.setStreamVolume(AudioManager.STREAM_MUSIC, mVolumeBaseForHook, 0);
+        }
+        
+        if (volAction == VOL_ACTION_NONE) {
+            int max = mAudioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+            if (max==value && max==valueOld && max==mVolumeBaseForHook) {
+                if (mVolumeUpSwitch) {
+                    volAction = VOL_ACTION_UP;
+                }
+                mVolumeUpSwitch = !mVolumeUpSwitch;
+            }
+        }
+        
+        if (volAction == VOL_ACTION_UP) {
+            scanBackward(1);
+        } else if (volAction == VOL_ACTION_DN) {
+            touchVoiceRepeat(System.currentTimeMillis());
         }
         
         return;
