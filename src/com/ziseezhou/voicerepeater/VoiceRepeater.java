@@ -780,6 +780,8 @@ public class VoiceRepeater extends ListActivity implements Animation.AnimationLi
             if (mService == null) return;
             try {
                 mService.rewind();
+                mPosOverride = mService.position();
+                refreshNow();
             } catch (RemoteException ex) {
             }
         }
@@ -804,6 +806,8 @@ public class VoiceRepeater extends ListActivity implements Animation.AnimationLi
             if (mService == null) return;
             try {
                 mService.forward();
+                mPosOverride = mService.position();
+                refreshNow();
             } catch (RemoteException ex) {
             }
         }
