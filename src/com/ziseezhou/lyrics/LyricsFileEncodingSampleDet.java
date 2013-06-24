@@ -34,7 +34,7 @@ public class LyricsFileEncodingSampleDet {
         encMap.put("GB18030", "");
     }
 
-    public static final int PACKAGE_SIZE = 512;
+    public static final int PACKAGE_SIZE = 4096;
     public static final int MAX_GUESS_PACKAGE_NUM = 4;
     public static final String TAG = "LyricsFileEncodingSampleDet";
     public static String getEncodeingName(String filePath) {
@@ -115,6 +115,57 @@ public class LyricsFileEncodingSampleDet {
 
         // (5)
         detector.reset();
+        
+        /*
+         * @see https://code.google.com/p/juniversalchardet/
+         * Encodings that can be detected
+
+            Chinese
+                ISO-2022-CN
+                BIG5
+                EUC-TW
+                GB18030
+                HZ-GB-23121 
+
+            Cyrillic
+                ISO-8859-5
+                KOI8-R
+                WINDOWS-1251
+                MACCYRILLIC
+                IBM866
+                IBM855 
+
+            Greek
+                ISO-8859-7
+                WINDOWS-1253 
+
+            Hebrew
+                ISO-8859-8
+                WINDOWS-1255 
+
+            Japanese
+                ISO-2022-JP
+                SHIFT_JIS
+                EUC-JP 
+
+            Korean
+                ISO-2022-KR
+                EUC-KR 
+
+            Unicode
+                UTF-8
+                UTF-16BE / UTF-16LE
+                UTF-32BE / UTF-32LE / X-ISO-10646-UCS-4-34121 / X-ISO-10646-UCS-4-21431 
+
+            Others
+                WINDOWS-1252 
+        */
+        
+        // fix bug, if Others was detected, we set it to default "GBK"
+        if ("WINDOWS-1252".equalsIgnoreCase(encName)) {
+            Log.i(TAG, "det WINDOWS-1252 manully change to GBK");
+            encName = "GBK";
+        }
 
         return encName;
     }
