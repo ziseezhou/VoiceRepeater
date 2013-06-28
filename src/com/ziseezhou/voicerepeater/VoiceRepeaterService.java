@@ -274,7 +274,7 @@ public class VoiceRepeaterService extends Service {
             //} else {
                 long newpos;
                 if (mSeekCounter < 15) {
-                    newpos = nowpos - 3000;
+                    newpos = nowpos - 5000;
                 } else {
                     newpos = nowpos - 15000;
                 }
@@ -309,7 +309,7 @@ public class VoiceRepeaterService extends Service {
             //} else {
                 long newpos;
                 if (mSeekCounter < 15) {
-                    newpos = nowpos + 3000;
+                    newpos = nowpos + 5000;
                 } else {
                     newpos = nowpos + 15000;
                 }
