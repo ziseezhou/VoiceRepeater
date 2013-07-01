@@ -139,8 +139,14 @@ public class VoiceRepeater extends ListActivity implements Animation.AnimationLi
         
         if (savedInstanceState != null) {
             mToolsVisible = savedInstanceState.getBoolean("toolsvisible", false);
-            mAudioTextInfo = savedInstanceState.getParcelable("textinfo");
+            //mAudioTextInfo = savedInstanceState.getParcelable("textinfo");
+
             if (mAudioTextInfo == null) mAudioTextInfo = new AudioTextInfo();
+            mAudioTextInfo.mAudioPath = savedInstanceState.getString("audioPath");
+            mAudioTextInfo.mAudioText = savedInstanceState.getString("audioText");
+            mAudioTextInfo.mShowText = savedInstanceState.getBoolean("bShowText", false);
+            mAudioTextInfo.mAudioTextQueried = savedInstanceState.getBoolean("bAudioTextQueried", false);
+            mAudioTextInfo.mAudioTextAvailable = savedInstanceState.getBoolean("bAudioTextAvailable", false);
         } 
         
         setContentView(R.layout.main);
@@ -301,7 +307,16 @@ public class VoiceRepeater extends ListActivity implements Animation.AnimationLi
     @Override
     protected void onSaveInstanceState(Bundle outState) {
         outState.putBoolean("toolsvisible", mToolsVisible);
-        outState.putParcelable("textinfo", mAudioTextInfo);
+        //outState.putParcelable("textinfo", mAudioTextInfo);
+        
+        // fix bug: exception: unmarshalling unknown type code
+        // remove the parcelable way
+        outState.putString("audioPath", mAudioTextInfo.mAudioPath);
+        outState.putString("audioText", mAudioTextInfo.mAudioText);
+        outState.putBoolean("bShowText", mAudioTextInfo.mShowText);
+        outState.putBoolean("bAudioTextQueried", mAudioTextInfo.mAudioTextQueried);
+        outState.putBoolean("bAudioTextAvailable", mAudioTextInfo.mAudioTextAvailable);
+        
         super.onSaveInstanceState(outState);
     }
     
