@@ -51,6 +51,8 @@ import android.widget.Toast;
 public class VoiceRepeaterService extends Service {
 	private static final String TAG = "VoiceRepeaterService";
 	
+	public static final int seekSliceValue = 5000;
+	
 	public static final int NOW = 1;
     public static final int NEXT = 2;
     public static final int LAST = 3;
@@ -274,7 +276,7 @@ public class VoiceRepeaterService extends Service {
             //} else {
                 long newpos;
                 if (mSeekCounter < 15) {
-                    newpos = nowpos - 5000;
+                    newpos = nowpos - seekSliceValue;
                 } else {
                     newpos = nowpos - 15000;
                 }
@@ -309,7 +311,7 @@ public class VoiceRepeaterService extends Service {
             //} else {
                 long newpos;
                 if (mSeekCounter < 15) {
-                    newpos = nowpos + 5000;
+                    newpos = nowpos + seekSliceValue;
                 } else {
                     newpos = nowpos + 15000;
                 }
@@ -1507,6 +1509,7 @@ public class VoiceRepeaterService extends Service {
         
         if (volAction == VOL_ACTION_UP) {
             scanBackward(1);
+            resetVoiceRepeat();
         } else if (volAction == VOL_ACTION_DN) {
             touchVoiceRepeat(System.currentTimeMillis());
         }

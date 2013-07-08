@@ -794,10 +794,13 @@ public class VoiceRepeater extends ListActivity implements Animation.AnimationLi
         public void onClick(android.view.View v) {
             if (mService == null) return;
             try {
-                mService.rewind();
-                mPosOverride = mService.position();
+                mPosOverride = mService.position() - VoiceRepeaterService.seekSliceValue;
+                if (mPosOverride < 0) mPosOverride = 0;
                 refreshNow();
+                mService.rewind();
             } catch (RemoteException ex) {
+            } finally {
+                mPosOverride = -1;
             }
         }
     };
@@ -820,10 +823,12 @@ public class VoiceRepeater extends ListActivity implements Animation.AnimationLi
         public void onClick(android.view.View v) {
             if (mService == null) return;
             try {
-                mService.forward();
-                mPosOverride = mService.position();
+                mPosOverride = mService.position() + VoiceRepeaterService.seekSliceValue;
                 refreshNow();
+                mService.forward();
             } catch (RemoteException ex) {
+            } finally {
+                mPosOverride = -1;
             }
         }
     };
