@@ -1035,7 +1035,7 @@ public class VoiceRepeater extends ListActivity implements Animation.AnimationLi
 
             File f = new File(tryPath);
             if (f.isFile() && f.exists()){
-                if (10*1024 < f.length()){
+                if (50*1024 < f.length()){
                     Log.e(TAG, "searchTextFile() file="+tryPath+", size="+f.length());
                     continue;
                 }
